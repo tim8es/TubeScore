@@ -13,7 +13,7 @@ const context: YouTubeVideoContext = {
 
 describe('proxy-backed recognition orchestrator', () => {
   it('runs catalog -> score -> decision -> rating entirely through the proxy', async () => {
-    const fetchFn = vi.fn(async (input: RequestInfo | URL) => {
+    const fetchFn = vi.fn(async (input: RequestInfo | URL, _init?: RequestInit) => {
       const url = new URL(String(input));
       if (url.pathname.endsWith('/search')) {
         return new Response(JSON.stringify({
@@ -44,7 +44,7 @@ describe('proxy-backed recognition orchestrator', () => {
   });
 
   it('does not request details for a hidden match', async () => {
-    const fetchFn = vi.fn(async () => new Response(JSON.stringify({
+    const fetchFn = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => new Response(JSON.stringify({
       results: [{ id: 1, media_type: 'movie', title: 'Completely Different Film' }]
     }), { status: 200 }));
 
