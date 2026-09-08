@@ -84,7 +84,7 @@ export class YouTubeContentRuntime {
   }
 
   private removeCard(): void {
-    for (const card of this.document.querySelectorAll('.tubescore-card')) {
+    for (const card of Array.from(this.document.querySelectorAll('.tubescore-card'))) {
       card.remove();
     }
   }
