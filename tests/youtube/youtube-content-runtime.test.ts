@@ -146,4 +146,24 @@ describe('YouTubeContentRuntime', () => {
     expect(document.querySelector('.tubescore-card')).toBeNull();
     runtime.stop();
   });
+
+  it('renders a non-fatal unavailable state when recognition fails', async () => {
+    setWatchPage('first', 'Dune: Part Two | Official Trailer');
+    const runtime = new YouTubeContentRuntime({
+      recognize: async () => {
+        throw new Error('recognition_failed:secret-detail-must-not-leak');
+      }
+    });
+
+    runtime.start();
+    await runtime.whenIdle();
+
+    const card = document.querySelector('.tubescore-card');
+    expect(card).not.toBeNull();
+    expect(card?.getAttribute('data-tubescore-state')).toBe('error');
+    expect(card?.textContent).toContain('TubeScore · Unavailable');
+    expect(card?.textContent).not.toContain('secret-detail-must-not-leak');
+
+    runtime.stop();
+  });
 });
