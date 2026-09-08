@@ -1,5 +1,5 @@
 export interface TmdbProxyEnvironment {
-  tmdbAccessToken?: string;
+  tmdbAccessToken: string | undefined;
   allowedOrigins: string[];
 }
 
