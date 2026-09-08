@@ -79,7 +79,7 @@ describe('TmdbCatalogProvider', () => {
     });
 
     await expect(provider.search('dune')).rejects.toEqual(
-      expect.objectContaining<TmdbProviderError>({
+      expect.objectContaining({
         name: 'TmdbProviderError',
         code: 'http_error',
         status: 429
@@ -94,7 +94,7 @@ describe('TmdbCatalogProvider', () => {
     });
 
     await expect(provider.search('dune')).rejects.toEqual(
-      expect.objectContaining<TmdbProviderError>({
+      expect.objectContaining({
         name: 'TmdbProviderError',
         code: 'invalid_json'
       })
@@ -108,7 +108,7 @@ describe('TmdbCatalogProvider', () => {
     });
 
     await expect(provider.search('dune')).rejects.toEqual(
-      expect.objectContaining<TmdbProviderError>({
+      expect.objectContaining({
         name: 'TmdbProviderError',
         code: 'invalid_response'
       })
