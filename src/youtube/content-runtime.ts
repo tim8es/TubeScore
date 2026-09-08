@@ -1,5 +1,5 @@
 import type { RecognitionResult, YouTubeVideoContext } from '../core/types';
-import { renderRatingCard } from '../ui/rating-card';
+import { renderRatingCard, renderUnavailableCard } from '../ui/rating-card';
 import { extractYouTubeVideoContext } from './metadata';
 
 export interface YouTubeContentRuntimeOptions {
@@ -67,20 +67,27 @@ export class YouTubeContentRuntime {
     this.lastVideoId = context.videoId;
     this.currentTask = this.recognize(context)
       .then((result) => {
-        if (!this.started || runId !== this.generation || !result) return;
-
-        const current = extractYouTubeVideoContext(this.document, this.window.location);
-        if (!current || current.videoId !== context.videoId) return;
+        if (!this.isCurrentRequest(runId, context.videoId) || !result) return;
 
         const card = renderRatingCard(result);
         if (card.hidden) return;
-
-        const mount = this.document.querySelector('#above-the-fold, #meta') ?? this.document.body;
-        mount.append(card);
+        this.mountCard(card);
       })
       .catch(() => {
-        // Recognition failures are non-fatal for the host YouTube page.
+        if (!this.isCurrentRequest(runId, context.videoId)) return;
+        this.mountCard(renderUnavailableCard());
       });
+  }
+
+  private isCurrentRequest(runId: number, videoId: string): boolean {
+    if (!this.started || runId !== this.generation) return false;
+    const current = extractYouTubeVideoContext(this.document, this.window.location);
+    return current?.videoId === videoId;
+  }
+
+  private mountCard(card: HTMLElement): void {
+    const mount = this.document.querySelector('#above-the-fold, #meta') ?? this.document.body;
+    mount.append(card);
   }
 
   private removeCard(): void {
