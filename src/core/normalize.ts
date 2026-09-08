@@ -1,5 +1,5 @@
 const NOISE_PATTERNS = [
-  /\bofficial\s+(?:trailer|teaser)\b/gi,
+  /\bofficial\s+(?:trailer|teaser)\s*\d*\b/gi,
   /\b(?:trailer|teaser)\s*\d*\b/gi,
   /\b4k\b/gi,
   /\buhd\b/gi,
