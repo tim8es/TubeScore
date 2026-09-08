@@ -17,7 +17,7 @@ const context: YouTubeVideoContext = {
 
 describe('TmdbCatalogProvider', () => {
   it('maps valid movie and TV results into CatalogCandidate values compatible with scorer', async () => {
-    const fetchFn = vi.fn(async () => new Response(JSON.stringify({
+    const fetchFn = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => new Response(JSON.stringify({
       results: [
         {
           id: 693134,
