@@ -1,14 +1,19 @@
-import { copyFile, mkdir, rm } from 'node:fs/promises';
+import { copyFile, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { build } from 'esbuild';
+
+const devBootstrap = process.argv.includes('--dev-bootstrap');
 
 await rm('dist', { recursive: true, force: true });
 await mkdir('dist', { recursive: true });
 
+const entryPoints = {
+  'content-script': 'src/extension/content-script.ts',
+  'service-worker': 'src/extension/service-worker.ts',
+  ...(devBootstrap ? { 'dev-bootstrap': 'src/extension/dev-bootstrap.ts' } : {})
+};
+
 await build({
-  entryPoints: {
-    'content-script': 'src/extension/content-script.ts',
-    'service-worker': 'src/extension/service-worker.ts'
-  },
+  entryPoints,
   outdir: 'dist',
   bundle: true,
   format: 'iife',
@@ -18,4 +23,9 @@ await build({
   minify: false
 });
 
-await copyFile('manifest.json', 'dist/manifest.json');
+const manifest = JSON.parse(await readFile('manifest.json', 'utf8'));
+if (devBootstrap) {
+  manifest.options_page = 'dev-bootstrap.html';
+  await copyFile('dev-bootstrap.html', 'dist/dev-bootstrap.html');
+}
+await writeFile('dist/manifest.json', `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
