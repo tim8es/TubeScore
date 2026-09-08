@@ -59,10 +59,12 @@ describe('TmdbCatalogProvider', () => {
         releaseYear: 2022
       }
     ]);
-    expect(scoreCandidate(context, candidates[0]).confidence).toBeGreaterThanOrEqual(0.9);
+    expect(scoreCandidate(context, candidates[0]!).confidence).toBeGreaterThanOrEqual(0.9);
 
     expect(fetchFn).toHaveBeenCalledOnce();
-    const [url, init] = fetchFn.mock.calls[0];
+    const firstCall = fetchFn.mock.calls[0]!;
+    const url = firstCall[0];
+    const init = firstCall[1];
     expect(String(url)).toContain('/search/multi?');
     expect(String(url)).toContain('query=dune+part+two+2024');
     expect(init).toMatchObject({
