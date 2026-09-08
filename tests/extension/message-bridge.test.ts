@@ -3,6 +3,7 @@ import type { RecognitionResult, YouTubeVideoContext } from '../../src/core/type
 import {
   createContentRecognizer,
   createRecognitionMessageHandler,
+  registerRecognitionMessageBridge,
   RECOGNIZE_MESSAGE_TYPE
 } from '../../src/extension/message-bridge';
 
@@ -52,6 +53,17 @@ describe('extension recognition message bridge', () => {
     expect(recognize).not.toHaveBeenCalled();
   });
 
+  it('rejects malformed recognition payloads before they reach orchestration', async () => {
+    const recognize = vi.fn(async () => result);
+    const handle = createRecognitionMessageHandler(recognize);
+
+    await expect(handle({
+      type: RECOGNIZE_MESSAGE_TYPE,
+      context: { ...context, hashtags: 'not-an-array' }
+    })).resolves.toEqual({ ok: false, error: 'invalid_request' });
+    expect(recognize).not.toHaveBeenCalled();
+  });
+
   it('normalizes service-worker recognition failures across the message boundary', async () => {
     const handle = createRecognitionMessageHandler(async () => {
       throw new Error('provider unavailable');
@@ -81,5 +93,23 @@ describe('extension recognition message bridge', () => {
     }));
 
     await expect(recognize(context)).rejects.toThrow('recognition_failed');
+  });
+
+  it('registers an async Chrome runtime listener that responds only to TubeScore requests', async () => {
+    let listener: ((message: unknown, sender: unknown, sendResponse: (response: unknown) => void) => boolean | void) | undefined;
+    const runtime = {
+      onMessage: {
+        addListener(value: typeof listener) {
+          listener = value;
+        }
+      }
+    };
+    registerRecognitionMessageBridge(runtime, async () => result);
+
+    const sendResponse = vi.fn();
+    expect(listener?.({ type: RECOGNIZE_MESSAGE_TYPE, context }, {}, sendResponse)).toBe(true);
+    await vi.waitFor(() => expect(sendResponse).toHaveBeenCalledWith({ ok: true, result }));
+
+    expect(listener?.({ type: 'other-message' }, {}, sendResponse)).toBe(false);
   });
 });
