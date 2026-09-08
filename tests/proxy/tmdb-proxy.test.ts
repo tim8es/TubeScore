@@ -58,7 +58,7 @@ describe('TMDB production proxy', () => {
   });
 
   it('forwards only an allowlisted search operation using the server token', async () => {
-    const fetchFn = vi.fn(async () => new Response(JSON.stringify({ results: [{ id: 1 }] }), {
+    const fetchFn = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => new Response(JSON.stringify({ results: [{ id: 1 }] }), {
       status: 200,
       headers: { 'Content-Type': 'application/json' }
     }));
@@ -85,7 +85,7 @@ describe('TMDB production proxy', () => {
   });
 
   it('forwards only movie/tv detail operations with numeric ids', async () => {
-    const fetchFn = vi.fn(async () => new Response(JSON.stringify({ vote_average: 8.2 }), { status: 200 }));
+    const fetchFn = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => new Response(JSON.stringify({ vote_average: 8.2 }), { status: 200 }));
     const handle = createTmdbProxyHandler({ env: env(), fetchFn });
 
     const response = await handle(new Request('https://proxy.example/api/tmdb/movie/693134?language=en-US', {
@@ -128,7 +128,7 @@ describe('TMDB production proxy', () => {
   });
 
   it('normalizes upstream failures instead of leaking TMDB response bodies', async () => {
-    const fetchFn = vi.fn(async () => new Response('upstream secret-ish diagnostics', { status: 401 }));
+    const fetchFn = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => new Response('upstream secret-ish diagnostics', { status: 401 }));
     const handle = createTmdbProxyHandler({ env: env(), fetchFn });
 
     const response = await handle(new Request('https://proxy.example/api/tmdb/search?query=Dune', {
