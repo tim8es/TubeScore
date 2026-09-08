@@ -5,7 +5,7 @@ export type TmdbProviderErrorCode = 'http_error' | 'invalid_json' | 'invalid_res
 
 export class TmdbProviderError extends Error {
   readonly code: TmdbProviderErrorCode;
-  readonly status?: number;
+  readonly status: number | undefined;
 
   constructor(code: TmdbProviderErrorCode, message: string, status?: number) {
     super(message);
