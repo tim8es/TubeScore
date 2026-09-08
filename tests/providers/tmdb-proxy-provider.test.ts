@@ -15,7 +15,7 @@ describe('TMDB proxy-backed providers', () => {
   });
 
   it('searches through the proxy without an Authorization header', async () => {
-    const fetchFn = vi.fn(async () => new Response(JSON.stringify({
+    const fetchFn = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => new Response(JSON.stringify({
       results: [{
         id: 693134,
         media_type: 'movie',
@@ -35,7 +35,7 @@ describe('TMDB proxy-backed providers', () => {
   });
 
   it('loads ratings through the proxy without a reusable credential', async () => {
-    const fetchFn = vi.fn(async () => new Response(JSON.stringify({
+    const fetchFn = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => new Response(JSON.stringify({
       vote_average: 8.4,
       vote_count: 6200
     }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
