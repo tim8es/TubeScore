@@ -1,0 +1,18 @@
+{
+  "manifest_version": 3,
+  "name": "TubeScore",
+  "version": "0.1.0",
+  "description": "Movie and TV ratings over YouTube videos.",
+  "background": {
+    "service_worker": "service-worker.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://www.youtube.com/*"],
+      "js": ["content-script.js"]
+    }
+  ],
+  "host_permissions": [
+    "https://api.themoviedb.org/*"
+  ]
+}
