@@ -20,7 +20,7 @@ function extractHashtags(document: Document, description: string): string[] {
     values.push(value);
   };
 
-  for (const link of document.querySelectorAll<HTMLAnchorElement>('a[href^="/hashtag/"]')) {
+  for (const link of Array.from(document.querySelectorAll<HTMLAnchorElement>('a[href^="/hashtag/"]'))) {
     add(link.textContent ?? '');
   }
 
