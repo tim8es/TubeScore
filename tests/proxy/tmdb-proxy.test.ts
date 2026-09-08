@@ -97,15 +97,21 @@ describe('TMDB production proxy', () => {
     expect(String(input)).toContain('/movie/693134');
   });
 
-  it('rejects arbitrary upstream paths and malformed ids', async () => {
+  it('rejects unsupported paths and malformed known-route ids without upstream traffic', async () => {
     const fetchFn = vi.fn();
     const handle = createTmdbProxyHandler({ env: env(), fetchFn });
 
-    for (const path of ['/api/tmdb/person/1', '/api/tmdb/movie/not-a-number', '/api/tmdb/../../configuration']) {
+    const cases = [
+      ['/api/tmdb/person/1', 404],
+      ['/api/tmdb/movie/not-a-number', 400],
+      ['/api/tmdb/../../configuration', 404]
+    ] as const;
+
+    for (const [path, expectedStatus] of cases) {
       const response = await handle(new Request(`https://proxy.example${path}`, {
         headers: { Origin: allowedOrigin }
       }));
-      expect(response.status).toBe(404);
+      expect(response.status).toBe(expectedStatus);
     }
 
     expect(fetchFn).not.toHaveBeenCalled();
