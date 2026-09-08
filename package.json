@@ -5,9 +5,10 @@
   "type": "module",
   "scripts": {
     "build": "node scripts/build.mjs",
+    "build:dev": "node scripts/build.mjs --dev-bootstrap",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "verify": "npm run typecheck && npm test && npm run build"
+    "verify": "npm run typecheck && npm test && npm run build && npm run build:dev"
   },
   "devDependencies": {
     "@types/node": "^24.3.0",
