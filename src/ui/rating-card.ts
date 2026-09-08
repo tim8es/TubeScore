@@ -8,6 +8,23 @@ function formatRating(source: string, value: number, scale: number): string {
   return `${source} ${value}/${scale}`;
 }
 
+export function renderUnavailableCard(): HTMLElement {
+  const card = document.createElement('section');
+  card.className = 'tubescore-card';
+  card.dataset.tubescoreState = 'error';
+
+  const header = document.createElement('div');
+  header.className = 'tubescore-card__brand';
+  header.textContent = 'TubeScore · Unavailable';
+
+  const message = document.createElement('span');
+  message.className = 'tubescore-card__meta';
+  message.textContent = 'Ratings could not be loaded.';
+
+  card.append(header, message);
+  return card;
+}
+
 export function renderRatingCard(result: RecognitionResult): HTMLElement {
   const card = document.createElement('section');
   card.className = 'tubescore-card';
