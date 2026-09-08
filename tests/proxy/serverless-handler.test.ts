@@ -5,7 +5,7 @@ const origin = 'chrome-extension://abcdefghijklmnop';
 
 describe('serverless TMDB proxy adapter', () => {
   it('reads only server runtime configuration and maps rewrite paths into the proxy core', async () => {
-    const fetchFn = vi.fn(async () => new Response(JSON.stringify({ results: [] }), { status: 200 }));
+    const fetchFn = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => new Response(JSON.stringify({ results: [] }), { status: 200 }));
     const handler = createServerlessTmdbHandler({
       runtimeEnv: {
         TMDB_ACCESS_TOKEN: 'server-runtime-value',
