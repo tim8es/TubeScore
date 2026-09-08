@@ -5,7 +5,10 @@ interface ManifestShape {
   manifest_version?: number;
   background?: { service_worker?: string };
   content_scripts?: Array<{ matches?: string[]; js?: string[] }>;
+  permissions?: string[];
   host_permissions?: string[];
+  options_page?: string;
+  web_accessible_resources?: unknown[];
 }
 
 const manifest = JSON.parse(readFileSync('manifest.json', 'utf8')) as ManifestShape;
@@ -22,7 +25,13 @@ describe('Chrome extension manifest', () => {
     ]);
   });
 
-  it('limits network host access to TMDB for background orchestration', () => {
+  it('uses only local storage permission and TMDB host access', () => {
+    expect(manifest.permissions).toEqual(['storage']);
     expect(manifest.host_permissions).toEqual(['https://api.themoviedb.org/*']);
+  });
+
+  it('does not expose developer bootstrap or web-accessible resources in the source manifest', () => {
+    expect(manifest.options_page).toBeUndefined();
+    expect(manifest.web_accessible_resources).toBeUndefined();
   });
 });
