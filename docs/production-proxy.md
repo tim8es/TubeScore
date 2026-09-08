@@ -14,9 +14,9 @@ Chrome extension
   -> api.themoviedb.org
 ```
 
-The repository contains a framework-free Fetch-compatible proxy core plus a thin Vercel Function entrypoint and rewrites. No deployment is performed by this repository state.
+The repository contains a framework-free Fetch-compatible proxy core, a thin Vercel Function entrypoint, tokenless proxy-backed TMDB providers, and a proxy-backed recognition orchestrator. No deployment is performed by this repository state.
 
-The existing unpacked development flow remains unchanged: local development can continue to use `chrome.storage.local` with a developer-supplied TMDB token. The production proxy path is separate and is not wired into that flow yet.
+The existing unpacked development flow remains unchanged: local development can continue to use `chrome.storage.local` with a developer-supplied TMDB token. The production proxy path is separate and is not selected by the current unpacked build.
 
 ## Security boundaries
 
@@ -76,7 +76,9 @@ The production extension needs only one non-secret value once the proxy is deplo
 }
 ```
 
-This URL is public configuration and does not authenticate TMDB. A future production wiring slice can feed this value to proxy-backed catalog/ratings providers while leaving the current local-token development path intact.
+This URL is public configuration and does not authenticate TMDB. `createProxyRecognitionOrchestrator()` validates the HTTPS URL and constructs tokenless proxy-backed catalog and ratings providers. Those providers never add an `Authorization` header.
+
+The current unpacked build intentionally continues to use the local developer-token path; selecting the proxy-backed orchestrator is a production build/entrypoint concern, not a credential distribution mechanism.
 
 Do not add `TMDB_ACCESS_TOKEN` to extension runtime configuration.
 
@@ -89,26 +91,27 @@ Repository pieces:
 - `src/proxy/serverless-handler.ts` — serverless env adapter and rewrite normalization;
 - `api/tmdb.ts` — deployable function entrypoint;
 - `vercel.json` — rewrites for search and movie/TV detail paths;
-- `tests/proxy/*.test.ts` — contract and failure-path coverage.
+- `src/providers/tmdb/tmdb-proxy-provider.ts` — tokenless extension-side providers;
+- `src/extension/proxy-recognition-orchestrator.ts` — proxy-backed recognition factory;
+- `tests/proxy/*.test.ts` and proxy provider/orchestrator tests — security and failure-path coverage.
 
-No Vercel project, account, deployment, domain, or environment secret is created by this slice.
+No Vercel project, account, deployment, domain, extension id, or environment secret is created by this slice.
 
 ## Deploy prerequisites
 
-Before a public deployment can serve production extension traffic, the operator must provide external infrastructure/state that cannot be created safely in source control:
+Before a public deployment can serve production extension traffic, external infrastructure/state must exist:
 
 1. A serverless deployment project/domain.
 2. A valid TMDB read token stored as the server-side `TMDB_ACCESS_TOKEN` secret.
-3. The concrete production Chrome extension origin for `TUBESCORE_ALLOWED_ORIGINS`.
-4. Platform-level rate limiting / abuse protection appropriate for the expected traffic.
+3. The concrete Chrome extension origin for `TUBESCORE_ALLOWED_ORIGINS`.
+4. Platform-level rate limiting / abuse protection appropriate for expected traffic.
 
 ## Smoke prerequisites
 
-A real end-to-end smoke test additionally requires:
+A real end-to-end proxy smoke test requires external runtime state:
 
 1. A deployed HTTPS proxy URL.
 2. The server-side token configured on that deployment.
 3. The test extension origin allowed by the proxy.
-4. Production proxy client wiring in the extension using only the public `tmdbProxyBaseUrl`.
 
-Until those exist, tests must use mocked upstream responses and must not make a live TMDB request.
+Until those exist, tests use mocked upstream responses and do not make a live TMDB request.
