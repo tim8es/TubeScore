@@ -1,6 +1,6 @@
 # TubeScore
 
-TubeScore is a Chrome/Chromium Manifest V3 extension that identifies movies or TV series referenced by YouTube videos and renders an IMDb rating near the YouTube metadata area.
+TubeScore is a Chrome/Chromium Manifest V3 extension that identifies movies or TV series referenced by YouTube videos and renders an available review score near the YouTube metadata area.
 
 ## Runtime model
 
@@ -12,24 +12,24 @@ The standard extension is zero-config:
 - no backend or deployed proxy required;
 - no account setup after installation.
 
-Recognition uses YouTube page metadata plus deterministic scoring. Catalog candidates come from IMDb's public autocomplete endpoint. Ratings come from IMDb's public `title.ratings.tsv.gz` dataset. The ratings dataset is fetched with the browser HTTP cache enabled and memoized in the service worker while it is alive.
+Recognition uses YouTube page metadata plus deterministic scoring. Catalog candidates come from the official Wikidata Action API. Ratings come from Wikidata `review score (P444)` statements, with issuer provenance from `review score by (P447)` when available.
 
-TMDB code retained in the repository is an optional legacy/fallback path and is not imported by the standard service-worker bundle.
+TMDB and IMDb code retained in the repository is legacy/fallback/reference code and is not imported by the standard production service-worker bundle.
 
 ## Current scope
 
 - YouTube `/watch` pages with SPA navigation support.
 - Trailers, teasers, clips, and reviews when the title can be identified confidently from page metadata.
-- IMDb catalog matching and IMDb aggregate rating display.
+- Wikidata movie/TV matching and review-score display when a usable `P444` statement exists.
 - High/likely/hidden confidence decisions; false negatives are preferred over confident false positives.
-- Generic non-blocking error state when a public data source is unavailable.
+- Generic non-blocking error state when the public data source is unavailable.
 - No LLM, computer vision, audio fingerprinting, subtitle analysis, or remote YouTube-history collection.
 
 ## Requirements
 
 - Node.js 22.
 - npm.
-- Chrome/Chromium with Manifest V3 and `DecompressionStream` support. The build targets Chrome 120+.
+- Chrome/Chromium with Manifest V3 support. The build targets modern Chromium.
 
 ## Verify
 
@@ -43,7 +43,7 @@ npm run verify
 1. strict TypeScript typecheck;
 2. the full Vitest suite;
 3. a clean production build;
-4. build-isolation checks proving the standard service worker contains no TMDB token/runtime-config/storage dependency and does contain the public IMDb providers.
+4. build-isolation checks proving the standard service worker contains no TMDB token/runtime-config/storage or IMDb production dependency and does contain the Wikidata provider.
 
 ## Build and install as an unpacked extension
 
@@ -77,15 +77,15 @@ YouTube watch page
   -> content-script metadata extraction
   -> chrome.runtime message
   -> service worker
-  -> IMDb public autocomplete
+  -> Wikidata wbsearchentities
   -> deterministic candidate scorer / match decision
-  -> IMDb public ratings dataset
+  -> Wikidata wbgetentities / P444 review score
   -> TubeScore rating card
 ```
 
-The extension never sends a TubeScore API credential because the standard runtime has no credential.
+The extension sends no TubeScore API credential because the standard runtime has no credential.
 
-On the first rating lookup after a cold service-worker start, Chrome may need to retrieve/decompress the IMDb ratings dataset. The request uses `cache: force-cache`; subsequent lookups in the same worker reuse the decompressed dataset in memory, and later worker starts can reuse the browser's HTTP cache.
+The Wikidata client uses a bounded in-memory cache, in-flight request deduplication, at most three concurrent requests, and bounded `429/Retry-After` handling. The cache is intentionally non-persistent and resets when the MV3 service worker restarts.
 
 ## Permissions
 
@@ -93,8 +93,7 @@ TubeScore requests no extension permissions such as `storage`, `tabs`, `history`
 
 Host access is limited to:
 
-- `https://v3.sg.media-imdb.com/*` — public IMDb title autocomplete;
-- `https://datasets.imdbws.com/*` — public IMDb ratings dataset.
+- `https://www.wikidata.org/*` — official Wikidata Action API and entity pages.
 
 The content script is matched only on `https://www.youtube.com/*`; this broad path is required because YouTube performs SPA navigation between watch pages without full page reloads.
 
@@ -109,23 +108,20 @@ Ratings could not be loaded.
 
 Internal exception details are not rendered. Existing navigation generation guards prevent a stale result/error from an old video overwriting the current page.
 
-## Data-source constraints
+## Data-source and coverage constraints
 
-The IMDb autocomplete endpoint used for candidate discovery is public but undocumented and can change independently of TubeScore. Provider failures therefore remain fail-safe and non-blocking.
+The active production data path uses Wikidata structured data through the official Wikimedia Action API. The MVP remains zero-token and uses Wikidata data under its published CC0 licensing model.
 
-IMDb publishes its downloadable datasets for non-commercial use under its dataset terms. Before commercial distribution or Chrome Web Store monetization, review the applicable IMDb licensing/usage terms for the intended use. This is a distribution/legal gate, not a runtime credential requirement.
+Coverage is intentionally lower than IMDb/TMDB: not every matched movie or TV item has a usable `P444` review score. TubeScore does not silently fall back to restricted scraping. If no usable score is available, the rating is hidden or the existing unavailable state is used as appropriate.
 
-## Release verification still requiring a real browser
+## Release verification
 
-CI verifies the code, message boundary, providers, recognition decisions, manifest, and generated bundle. It does not emulate Chrome's unpacked-extension lifecycle or current live YouTube DOM/network behavior.
-
-Before calling a build fully browser-verified, run an unpacked Chrome smoke test covering:
+The release branch has been verified with automated CI plus an isolated Playwright Chromium profile using the unpacked `dist/` build. The browser smoke covers:
 
 - extension load and service-worker startup;
-- a recognizable YouTube watch page;
-- IMDb rating render;
-- YouTube SPA navigation to another video;
-- no-match behavior;
+- a real YouTube watch page;
+- a Wikidata-backed rating render;
+- same-document YouTube SPA navigation;
 - provider-error UI.
 
-That smoke test requires **no token, secret, account, backend, or proxy**.
+The smoke uses no token, secret, account, backend, or user Chrome profile. Chrome Web Store publication is a separate release action and is not performed by the verification workflow.
