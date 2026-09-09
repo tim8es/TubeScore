@@ -91,7 +91,7 @@ describe('zero-config production recognition orchestrator', () => {
   });
 
   it('returns null when Wikidata search has no movie or TV candidates', async () => {
-    const fetchFn = vi.fn(async () => jsonResponse({
+    const fetchFn = vi.fn(async (_input: RequestInfo | URL) => jsonResponse({
       search: [{ id: 'Q42', label: 'Douglas Adams', description: 'English author and humorist' }]
     }));
 
