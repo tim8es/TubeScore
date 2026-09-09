@@ -97,6 +97,10 @@ describe('zero-config production recognition orchestrator', () => {
 
     const recognize = createPublicRecognitionOrchestrator({ fetchFn });
     await expect(recognize(context)).resolves.toBeNull();
-    expect(fetchFn).toHaveBeenCalledOnce();
+    expect(fetchFn).toHaveBeenCalled();
+    for (const [input] of fetchFn.mock.calls) {
+      const url = new URL(String(input));
+      expect(url.searchParams.get('action')).toBe('wbsearchentities');
+    }
   });
 });
