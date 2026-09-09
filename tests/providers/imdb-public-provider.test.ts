@@ -1,3 +1,4 @@
+import { gzipSync } from 'node:zlib';
 import { describe, expect, it, vi } from 'vitest';
 import {
   ImdbPublicCatalogProvider,
@@ -5,7 +6,17 @@ import {
 } from '../../src/providers/imdb/imdb-public-provider';
 
 const suggestionBaseUrl = 'https://v3.sg.media-imdb.com/suggestion/x';
-const titleBaseUrl = 'https://www.imdb.com/title';
+const ratingsDatasetUrl = 'https://datasets.imdbws.com/title.ratings.tsv.gz';
+
+function compressedRatingsTsv(): Uint8Array {
+  const tsv = [
+    'tconst\taverageRating\tnumVotes',
+    'tt0944947\t9.2\t2400000',
+    'tt15239678\t8.5\t650123',
+    ''
+  ].join('\n');
+  return new Uint8Array(gzipSync(tsv));
+}
 
 describe('IMDb public providers', () => {
   it('searches titles through the public suggestion endpoint without credentials', async () => {
@@ -37,7 +48,7 @@ describe('IMDb public providers', () => {
     ]);
 
     const [input, init] = fetchFn.mock.calls[0]!;
-    expect(String(input)).toContain('/suggestion/x/Dune%20Part%20Two.json');
+    expect(String(input)).toContain('/suggestion/x/dune%20part%20two.json');
     expect(new Headers(init?.headers).has('authorization')).toBe(false);
   });
 
@@ -75,68 +86,77 @@ describe('IMDb public providers', () => {
     });
   });
 
-  it('extracts aggregate rating from IMDb title JSON-LD without credentials', async () => {
-    const html = `<!doctype html><html><head>
-      <script type="application/ld+json">{
-        "@context":"https://schema.org",
-        "@type":"Movie",
-        "name":"Dune: Part Two",
-        "aggregateRating":{
-          "@type":"AggregateRating",
-          "ratingValue":8.5,
-          "ratingCount":650123
-        }
-      }</script>
-    </head></html>`;
-    const fetchFn = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => new Response(html, { status: 200 }));
+  it('loads ratings from the public IMDb ratings dataset without credentials and memoizes it', async () => {
+    const fetchFn = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => new Response(compressedRatingsTsv(), {
+      status: 200,
+      headers: { 'Content-Type': 'application/gzip' }
+    }));
+    const provider = new ImdbPublicRatingsProvider({ fetchFn, ratingsDatasetUrl });
 
-    const provider = new ImdbPublicRatingsProvider({ fetchFn, titleBaseUrl });
-    const rating = await provider.getRating({
+    const dune = await provider.getRating({
       providerId: 'tt15239678',
       mediaType: 'movie',
       title: 'Dune: Part Two',
       releaseYear: 2024
     });
+    const thrones = await provider.getRating({
+      providerId: 'tt0944947',
+      mediaType: 'tv',
+      title: 'Game of Thrones',
+      releaseYear: 2011
+    });
 
-    expect(rating).toEqual({
+    expect(dune).toEqual({
       source: 'IMDb',
       value: 8.5,
       scale: 10,
       voteCount: 650123,
       url: 'https://www.imdb.com/title/tt15239678/'
     });
+    expect(thrones).toMatchObject({ source: 'IMDb', value: 9.2, voteCount: 2400000 });
+    expect(fetchFn).toHaveBeenCalledOnce();
 
     const [input, init] = fetchFn.mock.calls[0]!;
-    expect(String(input)).toBe('https://www.imdb.com/title/tt15239678/');
+    expect(String(input)).toBe(ratingsDatasetUrl);
+    expect(init?.cache).toBe('force-cache');
     expect(new Headers(init?.headers).has('authorization')).toBe(false);
   });
 
-  it('fails safely when an IMDb page has no usable aggregate rating', async () => {
+  it('fails safely when the dataset has no rating for the title', async () => {
+    const fetchFn = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => new Response(compressedRatingsTsv(), {
+      status: 200
+    }));
+    const provider = new ImdbPublicRatingsProvider({ fetchFn, ratingsDatasetUrl });
+
+    await expect(provider.getRating({
+      providerId: 'tt99999999',
+      mediaType: 'movie',
+      title: 'Unrated'
+    })).rejects.toMatchObject({ code: 'rating_unavailable' });
+  });
+
+  it('normalizes dataset HTTP failures', async () => {
     const provider = new ImdbPublicRatingsProvider({
-      titleBaseUrl,
-      fetchFn: async () => new Response('<html><body>No rating yet</body></html>', { status: 200 })
+      ratingsDatasetUrl,
+      fetchFn: async () => new Response('blocked', { status: 503 })
     });
 
     await expect(provider.getRating({
       providerId: 'tt15239678',
       mediaType: 'movie',
       title: 'Dune: Part Two'
-    })).rejects.toMatchObject({
-      code: 'rating_unavailable'
-    });
+    })).rejects.toMatchObject({ code: 'http_error', status: 503 });
   });
 
   it('rejects invalid IMDb title ids before network access', async () => {
     const fetchFn = vi.fn();
-    const provider = new ImdbPublicRatingsProvider({ fetchFn, titleBaseUrl });
+    const provider = new ImdbPublicRatingsProvider({ fetchFn, ratingsDatasetUrl });
 
     await expect(provider.getRating({
       providerId: '../etc/passwd',
       mediaType: 'movie',
       title: 'Bad'
-    })).rejects.toMatchObject({
-      code: 'invalid_candidate'
-    });
+    })).rejects.toMatchObject({ code: 'invalid_candidate' });
     expect(fetchFn).not.toHaveBeenCalled();
   });
 });
