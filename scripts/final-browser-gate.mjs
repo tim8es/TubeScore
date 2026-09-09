@@ -6,7 +6,6 @@ import { chromium } from 'playwright';
 const DIST = resolve('dist');
 const OUT = resolve('browser-smoke-artifacts');
 const FIRST_ID = 'Way9Dexny3w';
-const SECOND_ID = '_YUzQa_1RCE';
 const FIRST_URL = `https://www.youtube.com/watch?v=${FIRST_ID}&hl=en&gl=US`;
 const report = {
   status: 'running',
@@ -79,26 +78,37 @@ async function launch(extensionDir, profile) {
   });
 }
 
-async function clickVisibleTarget(page) {
-  const preferred = page.locator(`ytd-video-renderer a#video-title[href*="watch?v=${SECOND_ID}"]:visible, ytd-rich-item-renderer a#video-title[href*="watch?v=${SECOND_ID}"]:visible`).first();
-  if (await preferred.isVisible({ timeout: 20000 }).catch(() => false)) {
-    await preferred.click({ timeout: 10000 });
-    return 'visible-renderer';
-  }
+async function clickRenderedSearchResult(page) {
+  await page.waitForFunction((firstId) => {
+    const links = Array.from(document.querySelectorAll('ytd-video-renderer a#video-title[href*="watch?v="], ytd-rich-item-renderer a#video-title[href*="watch?v="]'));
+    return links.some((link) => {
+      const href = link.getAttribute('href') ?? '';
+      const id = new URL(href, location.href).searchParams.get('v');
+      const rect = link.getBoundingClientRect();
+      const style = getComputedStyle(link);
+      return id && id !== firstId && rect.width > 0 && rect.height > 0 && style.visibility !== 'hidden' && style.display !== 'none';
+    });
+  }, FIRST_ID, { timeout: 30000 });
 
-  const clicked = await page.evaluate((videoId) => {
-    const nodes = Array.from(document.querySelectorAll(`a[href*="watch?v=${videoId}"]`));
-    const visible = nodes.find((node) => {
+  const target = await page.evaluate((firstId) => {
+    const links = Array.from(document.querySelectorAll('ytd-video-renderer a#video-title[href*="watch?v="], ytd-rich-item-renderer a#video-title[href*="watch?v="]'));
+    const link = links.find((node) => {
+      const href = node.getAttribute('href') ?? '';
+      const id = new URL(href, location.href).searchParams.get('v');
       const rect = node.getBoundingClientRect();
       const style = getComputedStyle(node);
-      return rect.width > 0 && rect.height > 0 && style.visibility !== 'hidden' && style.display !== 'none';
+      return id && id !== firstId && rect.width > 0 && rect.height > 0 && style.visibility !== 'hidden' && style.display !== 'none';
     });
-    if (!(visible instanceof HTMLElement)) return false;
-    visible.click();
-    return true;
-  }, SECOND_ID);
-  if (!clicked) throw new Error('no_visible_second_video_link');
-  return 'visible-dom-fallback';
+    if (!(link instanceof HTMLElement)) return null;
+    const href = link.getAttribute('href') ?? '';
+    const videoId = new URL(href, location.href).searchParams.get('v');
+    const text = link.textContent?.replace(/\s+/g, ' ').trim() ?? '';
+    link.click();
+    return { videoId, text };
+  }, FIRST_ID);
+
+  if (!target?.videoId) throw new Error('no_rendered_search_result');
+  return target;
 }
 
 function hasWikidataRating(text) {
@@ -130,12 +140,13 @@ async function runSuccess(root) {
     await search.fill('Dune Part Two Official Trailer 2 Warner Bros');
     await search.press('Enter');
     await page.waitForURL(/youtube\.com\/results\?/, { timeout: 30000 });
-    const strategy = await clickVisibleTarget(page);
-    await page.waitForURL((u) => u.pathname === '/watch' && u.searchParams.get('v') === SECOND_ID, { timeout: 45000 });
-    await waitWatch(page, SECOND_ID);
+    await page.waitForTimeout(1500);
+    const target = await clickRenderedSearchResult(page);
+    await page.waitForURL((u) => u.pathname === '/watch' && u.searchParams.get('v') === target.videoId, { timeout: 45000 });
+    await waitWatch(page, target.videoId);
     const markerPreserved = await page.evaluate((value) => window.__tubeScoreFinalMarker === value, marker);
     const second = await overlay(page);
-    report.spa = { strategy, markerPreserved, url: page.url(), overlay: second };
+    report.spa = { target, markerPreserved, url: page.url(), overlay: second };
     log('spa_overlay', report.spa);
     if (!markerPreserved) throw new Error('spa_document_replaced');
     if (!['high', 'likely'].includes(second.state ?? '')) throw new Error(`spa_state:${second.state}`);
