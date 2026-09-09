@@ -39,6 +39,10 @@ function normalizedBaseUrl(value: string): string {
   return value.replace(/\/+$/, '');
 }
 
+function defaultFetch(): FetchFn {
+  return globalThis.fetch.bind(globalThis);
+}
+
 function classifyMediaType(entry: Record<string, unknown>): MediaType | null {
   const descriptor = [entry.qid, entry.q]
     .filter((value): value is string => typeof value === 'string')
@@ -82,7 +86,7 @@ export class ImdbPublicCatalogProvider {
   private readonly suggestionBaseUrl: string;
 
   constructor(options: ImdbPublicCatalogProviderOptions = {}) {
-    this.fetchFn = options.fetchFn ?? fetch;
+    this.fetchFn = options.fetchFn ?? defaultFetch();
     this.suggestionBaseUrl = normalizedBaseUrl(
       options.suggestionBaseUrl ?? 'https://v3.sg.media-imdb.com/suggestion/x'
     );
@@ -173,7 +177,7 @@ export class ImdbPublicRatingsProvider {
   private datasetPromise: Promise<string> | null = null;
 
   constructor(options: ImdbPublicRatingsProviderOptions = {}) {
-    this.fetchFn = options.fetchFn ?? fetch;
+    this.fetchFn = options.fetchFn ?? defaultFetch();
     this.ratingsDatasetUrl = options.ratingsDatasetUrl
       ?? 'https://datasets.imdbws.com/title.ratings.tsv.gz';
   }
