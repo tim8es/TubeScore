@@ -8,10 +8,8 @@ on:
       - 'src/**'
       - 'manifest.json'
       - 'scripts/build.mjs'
-      - 'scripts/browser-smoke.mjs'
       - 'scripts/final-browser-gate.mjs'
       - 'scripts/extension-worker-network-smoke.mjs'
-      - 'scripts/youtube-trace-smoke.mjs'
       - '.github/workflows/browser-smoke.yml'
   workflow_dispatch:
 
@@ -32,11 +30,9 @@ jobs:
           npx playwright install --with-deps chromium
       - name: Build unpacked extension
         run: npm run build
-      - name: Capture extension worker network evidence
+      - name: Capture Wikidata worker network evidence
         run: xvfb-run -a node scripts/extension-worker-network-smoke.mjs
-      - name: Capture live YouTube production fetch trace
-        run: xvfb-run -a node scripts/youtube-trace-smoke.mjs
-      - name: Run final isolated browser gate
+      - name: Run final isolated Wikidata browser gate
         run: xvfb-run -a node scripts/final-browser-gate.mjs
       - name: Upload browser smoke evidence
         if: always()
