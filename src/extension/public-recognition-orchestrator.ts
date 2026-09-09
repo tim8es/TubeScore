@@ -40,13 +40,20 @@ export function createPublicRecognitionOrchestrator(
   const ratings = new WikidataPublicRatingsProvider(providerOptions);
 
   return async (context) => {
+    let bestHidden: MatchScore | null = null;
+
     for (const query of buildSearchQueries(context)) {
       const candidates = await catalog.search(query);
       const score = bestScore(context, candidates);
       if (!score) continue;
 
       const decision = decideMatch(score);
-      if (decision.state === 'hidden') return { decision, ratings: [] };
+      if (decision.state === 'hidden') {
+        if (bestHidden === null || score.confidence > bestHidden.confidence) {
+          bestHidden = score;
+        }
+        continue;
+      }
 
       try {
         const rating = await ratings.getRating(score.candidate);
@@ -59,6 +66,9 @@ export function createPublicRecognitionOrchestrator(
       }
     }
 
+    if (bestHidden) {
+      return { decision: decideMatch(bestHidden), ratings: [] };
+    }
     return null;
   };
 }
