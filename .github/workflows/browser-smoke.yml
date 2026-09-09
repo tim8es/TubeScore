@@ -10,6 +10,7 @@ on:
       - 'scripts/build.mjs'
       - 'scripts/browser-smoke.mjs'
       - 'scripts/extension-worker-network-smoke.mjs'
+      - 'scripts/youtube-trace-smoke.mjs'
       - '.github/workflows/browser-smoke.yml'
   workflow_dispatch:
 
@@ -32,6 +33,8 @@ jobs:
         run: npm run build
       - name: Capture extension worker network evidence
         run: xvfb-run -a node scripts/extension-worker-network-smoke.mjs
+      - name: Capture live YouTube production fetch trace
+        run: xvfb-run -a node scripts/youtube-trace-smoke.mjs
       - name: Run isolated real browser smoke
         run: xvfb-run -a node scripts/browser-smoke.mjs
       - name: Upload browser smoke evidence
