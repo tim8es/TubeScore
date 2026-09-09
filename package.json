@@ -5,12 +5,10 @@
   "type": "module",
   "scripts": {
     "build": "node scripts/build.mjs",
-    "build:dev": "node scripts/build.mjs --dev-bootstrap",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "verify:build": "npm run build && node scripts/verify-build.mjs standard",
-    "verify:build:dev": "npm run build:dev && node scripts/verify-build.mjs dev",
-    "verify": "npm run typecheck && npm test && npm run verify:build && npm run verify:build:dev"
+    "verify:build": "npm run build && node scripts/verify-build.mjs",
+    "verify": "npm run typecheck && npm test && npm run verify:build"
   },
   "devDependencies": {
     "@types/node": "^24.3.0",
