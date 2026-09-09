@@ -8,14 +8,17 @@ import {
 const suggestionBaseUrl = 'https://v3.sg.media-imdb.com/suggestion/x';
 const ratingsDatasetUrl = 'https://datasets.imdbws.com/title.ratings.tsv.gz';
 
-function compressedRatingsTsv(): Uint8Array {
+function compressedRatingsTsv(): ArrayBuffer {
   const tsv = [
     'tconst\taverageRating\tnumVotes',
     'tt0944947\t9.2\t2400000',
     'tt15239678\t8.5\t650123',
     ''
   ].join('\n');
-  return new Uint8Array(gzipSync(tsv));
+  const bytes = gzipSync(tsv);
+  const copy = new Uint8Array(bytes.byteLength);
+  copy.set(bytes);
+  return copy.buffer;
 }
 
 describe('IMDb public providers', () => {
