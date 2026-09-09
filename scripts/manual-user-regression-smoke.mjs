@@ -10,7 +10,7 @@ const CASES = [
   { id: 'AMLCbpM1fRQ', expectedTitle: /Onslaught/i, screenshot: '02-onslaught.png', forbidUnavailable: true },
   { id: 'Way9Dexny3w', expectedTitle: /Dune: Part Two/i, screenshot: '03-dune-regression.png', forbidUnavailable: false }
 ];
-const report = { status: 'running', browser: null, cases: [], providerError: null, duneWorkerDiagnostic: null };
+const report = { status: 'running', browser: null, cases: [], providerError: null, duneCardHistory: null };
 const logs = [];
 
 function log(event, data = {}) {
@@ -38,16 +38,6 @@ async function waitWatch(page, id) {
   }, id, { timeout: 70000 });
 }
 
-async function hydrationSnapshot(page) {
-  return page.evaluate(() => ({
-    href: location.href,
-    h1: document.querySelector('h1.ytd-watch-metadata yt-formatted-string, h1 yt-formatted-string')?.textContent?.trim() ?? '',
-    metaTitle: document.querySelector('meta[name="title"]')?.getAttribute('content') ?? document.querySelector('meta[name="title"]')?.textContent?.trim() ?? '',
-    aboveFold: Boolean(document.querySelector('#above-the-fold')),
-    card: document.querySelector('.tubescore-card')?.textContent?.replace(/\s+/g, ' ').trim() ?? ''
-  }));
-}
-
 async function pageMetadata(page) {
   return page.evaluate(() => {
     const pick = (selectors) => {
@@ -59,15 +49,10 @@ async function pageMetadata(page) {
       return '';
     };
     const description = pick(['#description-inline-expander', '#description', 'ytd-text-inline-expander']).slice(0, 600);
-    const hashtags = [...new Set([
-      ...Array.from(document.querySelectorAll('a[href^="/hashtag/"]')).map((node) => (node.textContent ?? '').replace(/^#/, '').trim()).filter(Boolean),
-      ...Array.from(description.matchAll(/#([\p{L}\p{N}_]+)/gu)).map((match) => match[1]).filter(Boolean)
-    ])];
     return {
       title: pick(['h1.ytd-watch-metadata yt-formatted-string', 'h1 yt-formatted-string', 'meta[name="title"]']),
       description,
-      channel: pick(['ytd-channel-name #text a', '#owner #channel-name a', '#channel-name a']),
-      hashtags
+      channel: pick(['ytd-channel-name #text a', '#owner #channel-name a', '#channel-name a'])
     };
   });
 }
@@ -89,37 +74,8 @@ async function launch(extensionDir, profile) {
   return chromium.launchPersistentContext(profile, {
     headless: false,
     viewport: { width: 1440, height: 1100 },
-    args: [
-      `--disable-extensions-except=${extensionDir}`,
-      `--load-extension=${extensionDir}`,
-      '--no-first-run', '--disable-default-apps', '--disable-sync', '--disable-features=Translate'
-    ]
+    args: [`--disable-extensions-except=${extensionDir}`, `--load-extension=${extensionDir}`, '--no-first-run', '--disable-default-apps', '--disable-sync', '--disable-features=Translate']
   });
-}
-
-async function workerDiagnostic(context, videoId, titleQuery) {
-  let worker = context.serviceWorkers().find((item) => item.url().startsWith('chrome-extension://'));
-  if (!worker) {
-    worker = await context.waitForEvent('serviceworker', {
-      predicate: (item) => item.url().startsWith('chrome-extension://'),
-      timeout: 15000
-    });
-  }
-  return worker.evaluate(async ({ videoId, titleQuery }) => {
-    const load = async (params) => {
-      const url = new URL('https://www.wikidata.org/w/api.php');
-      for (const [key, value] of Object.entries(params)) url.searchParams.set(key, value);
-      url.searchParams.set('format', 'json');
-      url.searchParams.set('origin', '*');
-      const response = await fetch(url, { cache: 'no-store', headers: { 'Api-User-Agent': 'TubeScore/0.1 regression worker trace' } });
-      return { status: response.status, payload: await response.json() };
-    };
-    return {
-      exact: await load({ action: 'query', list: 'search', srsearch: `haswbstatement:P1651=${videoId}`, srlimit: '10' }),
-      title: await load({ action: 'wbsearchentities', search: titleQuery, language: 'en', uselang: 'en', type: 'item', limit: '10' }),
-      claims: await load({ action: 'wbgetentities', ids: 'Q109228991', props: 'claims', languages: 'en' })
-    };
-  }, { videoId, titleQuery });
 }
 
 async function runSuccessCases(root) {
@@ -128,21 +84,43 @@ async function runSuccessCases(root) {
     report.browser ??= context.browser()?.version() ?? 'unknown';
     try {
       const page = context.pages()[0] ?? await context.newPage();
-      await page.goto(`https://www.youtube.com/watch?v=${testCase.id}&hl=en&gl=US`, { waitUntil: 'domcontentloaded', timeout: 60000 });
       if (testCase.id === 'Way9Dexny3w') {
-        log('dune_early_hydration', await hydrationSnapshot(page));
-        await page.waitForTimeout(250);
-        log('dune_250ms_hydration', await hydrationSnapshot(page));
+        await page.addInitScript(() => {
+          window.__tsCardHistory = [];
+          const record = (kind) => {
+            const card = document.querySelector('.tubescore-card');
+            window.__tsCardHistory.push({
+              t: performance.now(),
+              kind,
+              card: card?.textContent?.replace(/\s+/g, ' ').trim() ?? '',
+              connected: Boolean(card?.isConnected),
+              aboveFold: Boolean(document.querySelector('#above-the-fold')),
+              h1: document.querySelector('h1.ytd-watch-metadata yt-formatted-string, h1 yt-formatted-string')?.textContent?.trim() ?? ''
+            });
+          };
+          addEventListener('DOMContentLoaded', () => {
+            record('domcontentloaded');
+            new MutationObserver(() => record('mutation')).observe(document.documentElement, { childList: true, subtree: true });
+          });
+        });
       }
+      await page.goto(`https://www.youtube.com/watch?v=${testCase.id}&hl=en&gl=US`, { waitUntil: 'domcontentloaded', timeout: 60000 });
       await dismissConsent(page);
       await waitWatch(page, testCase.id);
       const metadata = await pageMetadata(page);
       log('case_metadata', { id: testCase.id, metadata });
-      if (testCase.id === 'Way9Dexny3w') {
-        report.duneWorkerDiagnostic = await workerDiagnostic(context, testCase.id, 'dune part two');
-        log('dune_worker_diagnostic', report.duneWorkerDiagnostic);
+      let card;
+      try {
+        card = await overlay(page, testCase.id === 'Way9Dexny3w' ? 30000 : 120000);
+      } catch (error) {
+        if (testCase.id === 'Way9Dexny3w') {
+          const history = await page.evaluate(() => window.__tsCardHistory ?? []);
+          report.duneCardHistory = history;
+          const cardEvents = history.filter((item) => item.card || item.kind === 'domcontentloaded');
+          log('dune_card_history', { count: history.length, cardEvents: cardEvents.slice(-30) });
+        }
+        throw error;
       }
-      const card = await overlay(page, testCase.id === 'Way9Dexny3w' ? 30000 : 120000);
       const entry = { id: testCase.id, url: page.url(), metadata, ...card };
       report.cases.push(entry);
       log('case_overlay', entry);
@@ -183,7 +161,6 @@ async function runProviderError(root) {
     if (!/Unavailable|Ratings could not be loaded/i.test(card.text)) throw new Error(`provider_error_copy:${card.text}`);
     if (/tubescore_manual_smoke|internal_failure/i.test(card.text)) throw new Error(`provider_error_leak:${card.text}`);
     if (card.count !== 1) throw new Error(`provider_error_count:${card.count}`);
-    await page.screenshot({ path: join(OUT, '04-provider-error.png'), fullPage: false });
   } finally {
     await context.close();
   }
