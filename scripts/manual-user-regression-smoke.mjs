@@ -38,11 +38,22 @@ async function waitWatch(page, id) {
   }, id, { timeout: 70000 });
 }
 
+async function hydrationSnapshot(page) {
+  return page.evaluate(() => ({
+    href: location.href,
+    h1: document.querySelector('h1.ytd-watch-metadata yt-formatted-string, h1 yt-formatted-string')?.textContent?.trim() ?? '',
+    metaTitle: document.querySelector('meta[name="title"]')?.getAttribute('content') ?? document.querySelector('meta[name="title"]')?.textContent?.trim() ?? '',
+    aboveFold: Boolean(document.querySelector('#above-the-fold')),
+    card: document.querySelector('.tubescore-card')?.textContent?.replace(/\s+/g, ' ').trim() ?? ''
+  }));
+}
+
 async function pageMetadata(page) {
   return page.evaluate(() => {
     const pick = (selectors) => {
       for (const selector of selectors) {
-        const value = document.querySelector(selector)?.textContent?.trim();
+        const node = document.querySelector(selector);
+        const value = node instanceof HTMLMetaElement ? node.content.trim() : node?.textContent?.trim();
         if (value) return value;
       }
       return '';
@@ -86,7 +97,7 @@ async function launch(extensionDir, profile) {
   });
 }
 
-async function workerDiagnostic(context, recognitionContext, titleQuery) {
+async function workerDiagnostic(context, videoId, titleQuery) {
   let worker = context.serviceWorkers().find((item) => item.url().startsWith('chrome-extension://'));
   if (!worker) {
     worker = await context.waitForEvent('serviceworker', {
@@ -94,7 +105,7 @@ async function workerDiagnostic(context, recognitionContext, titleQuery) {
       timeout: 15000
     });
   }
-  return worker.evaluate(async ({ recognitionContext, titleQuery }) => {
+  return worker.evaluate(async ({ videoId, titleQuery }) => {
     const load = async (params) => {
       const url = new URL('https://www.wikidata.org/w/api.php');
       for (const [key, value] of Object.entries(params)) url.searchParams.set(key, value);
@@ -103,18 +114,12 @@ async function workerDiagnostic(context, recognitionContext, titleQuery) {
       const response = await fetch(url, { cache: 'no-store', headers: { 'Api-User-Agent': 'TubeScore/0.1 regression worker trace' } });
       return { status: response.status, payload: await response.json() };
     };
-    const recognition = await Promise.race([
-      chrome.runtime.sendMessage({ type: 'tubescore:recognize', context: recognitionContext })
-        .then((value) => ({ status: 'resolved', value }))
-        .catch((error) => ({ status: 'rejected', error: String(error) })),
-      new Promise((resolve) => setTimeout(() => resolve({ status: 'timeout' }), 15000))
-    ]);
     return {
-      recognition,
-      exact: await load({ action: 'query', list: 'search', srsearch: `haswbstatement:P1651=${recognitionContext.videoId}`, srlimit: '10' }),
-      title: await load({ action: 'wbsearchentities', search: titleQuery, language: 'en', uselang: 'en', type: 'item', limit: '10' })
+      exact: await load({ action: 'query', list: 'search', srsearch: `haswbstatement:P1651=${videoId}`, srlimit: '10' }),
+      title: await load({ action: 'wbsearchentities', search: titleQuery, language: 'en', uselang: 'en', type: 'item', limit: '10' }),
+      claims: await load({ action: 'wbgetentities', ids: 'Q109228991', props: 'claims', languages: 'en' })
     };
-  }, { recognitionContext, titleQuery });
+  }, { videoId, titleQuery });
 }
 
 async function runSuccessCases(root) {
@@ -124,20 +129,17 @@ async function runSuccessCases(root) {
     try {
       const page = context.pages()[0] ?? await context.newPage();
       await page.goto(`https://www.youtube.com/watch?v=${testCase.id}&hl=en&gl=US`, { waitUntil: 'domcontentloaded', timeout: 60000 });
+      if (testCase.id === 'Way9Dexny3w') {
+        log('dune_early_hydration', await hydrationSnapshot(page));
+        await page.waitForTimeout(250);
+        log('dune_250ms_hydration', await hydrationSnapshot(page));
+      }
       await dismissConsent(page);
       await waitWatch(page, testCase.id);
       const metadata = await pageMetadata(page);
       log('case_metadata', { id: testCase.id, metadata });
       if (testCase.id === 'Way9Dexny3w') {
-        const recognitionContext = {
-          videoId: testCase.id,
-          title: metadata.title,
-          description: metadata.description,
-          channelName: metadata.channel,
-          hashtags: metadata.hashtags,
-          url: page.url()
-        };
-        report.duneWorkerDiagnostic = await workerDiagnostic(context, recognitionContext, 'dune part two');
+        report.duneWorkerDiagnostic = await workerDiagnostic(context, testCase.id, 'dune part two');
         log('dune_worker_diagnostic', report.duneWorkerDiagnostic);
       }
       const card = await overlay(page, testCase.id === 'Way9Dexny3w' ? 30000 : 120000);
