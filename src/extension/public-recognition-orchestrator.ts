@@ -39,8 +39,30 @@ export function createPublicRecognitionOrchestrator(
   const catalog = new WikidataPublicCatalogProvider(providerOptions);
   const ratings = new WikidataPublicRatingsProvider(providerOptions);
 
+  const resultForVisibleScore = async (score: MatchScore): Promise<RecognitionResult> => {
+    const decision = decideMatch(score);
+    try {
+      const rating = await ratings.getRating(score.candidate);
+      return { decision, ratings: [rating] };
+    } catch (error) {
+      if (error instanceof WikidataProviderError && error.code === 'rating_unavailable') {
+        return { decision, ratings: [] };
+      }
+      throw error;
+    }
+  };
+
   return async (context) => {
     let bestHidden: MatchScore | null = null;
+
+    const exactScore = bestScore(context, await catalog.searchByYouTubeVideoId(context.videoId));
+    if (exactScore) {
+      const exactDecision = decideMatch(exactScore);
+      if (exactDecision.state !== 'hidden') {
+        return resultForVisibleScore(exactScore);
+      }
+      bestHidden = exactScore;
+    }
 
     for (const query of buildSearchQueries(context)) {
       const candidates = await catalog.search(query);
@@ -55,15 +77,7 @@ export function createPublicRecognitionOrchestrator(
         continue;
       }
 
-      try {
-        const rating = await ratings.getRating(score.candidate);
-        return { decision, ratings: [rating] };
-      } catch (error) {
-        if (error instanceof WikidataProviderError && error.code === 'rating_unavailable') {
-          return { decision, ratings: [] };
-        }
-        throw error;
-      }
+      return resultForVisibleScore(score);
     }
 
     if (bestHidden) {
