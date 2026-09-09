@@ -12,12 +12,15 @@ const context: YouTubeVideoContext = {
   url: 'https://www.youtube.com/watch?v=abc123'
 };
 
-function ratingsDataset(): Uint8Array {
-  return new Uint8Array(gzipSync([
+function ratingsDataset(): ArrayBuffer {
+  const bytes = gzipSync([
     'tconst\taverageRating\tnumVotes',
     'tt15239678\t8.5\t650123',
     ''
-  ].join('\n')));
+  ].join('\n'));
+  const copy = new Uint8Array(bytes.byteLength);
+  copy.set(bytes);
+  return copy.buffer;
 }
 
 describe('zero-config production recognition orchestrator', () => {
