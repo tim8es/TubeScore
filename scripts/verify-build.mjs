@@ -20,7 +20,9 @@ for (const forbidden of [
   'tubescoreRuntimeConfig',
   'tmdbAccessToken',
   'api.themoviedb.org',
-  'chrome.storage'
+  'chrome.storage',
+  'v3.sg.media-imdb.com',
+  'datasets.imdbws.com'
 ]) {
   if (worker.includes(forbidden)) {
     throw new Error(`standard_worker_contains_forbidden_runtime_dependency:${forbidden}`);
@@ -28,8 +30,10 @@ for (const forbidden of [
 }
 
 for (const required of [
-  'v3.sg.media-imdb.com',
-  'datasets.imdbws.com/title.ratings.tsv.gz'
+  'www.wikidata.org/w/api.php',
+  'wbsearchentities',
+  'wbgetentities',
+  'Api-User-Agent'
 ]) {
   if (!worker.includes(required)) {
     throw new Error(`standard_worker_missing_public_provider:${required}`);
