@@ -17,3 +17,17 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npm run verify:build
+      - name: Package verified TubeScore MVP
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          cd dist
+          zip -qr ../TubeScore-MVP.zip .
+      - name: Upload verified TubeScore MVP
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/upload-artifact@v4
+        with:
+          name: TubeScore-MVP-${{ github.sha }}
+          path: TubeScore-MVP.zip
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0
