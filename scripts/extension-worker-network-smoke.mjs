@@ -35,7 +35,7 @@ try {
   const diagnostic = await worker.evaluate(async (apiUrl) => {
     const url = new URL(apiUrl);
     url.searchParams.set('action', 'wbsearchentities');
-    url.searchParams.set('search', 'Dune Part Two 2024');
+    url.searchParams.set('search', 'Dune Part Two');
     url.searchParams.set('language', 'en');
     url.searchParams.set('uselang', 'en');
     url.searchParams.set('type', 'item');
