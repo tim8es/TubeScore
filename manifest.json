@@ -12,10 +12,8 @@
       "js": ["content-script.js"]
     }
   ],
-  "permissions": [
-    "storage"
-  ],
   "host_permissions": [
-    "https://api.themoviedb.org/*"
+    "https://v3.sg.media-imdb.com/*",
+    "https://www.imdb.com/*"
   ]
 }
