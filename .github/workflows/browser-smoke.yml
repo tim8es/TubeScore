@@ -4,6 +4,12 @@ on:
   push:
     branches:
       - feat/mvp-vertical-slice
+    paths:
+      - 'src/**'
+      - 'manifest.json'
+      - 'scripts/build.mjs'
+      - 'scripts/browser-smoke.mjs'
+      - '.github/workflows/browser-smoke.yml'
   workflow_dispatch:
 
 jobs:
