@@ -20,14 +20,33 @@ export class WikidataProviderError extends Error {
 }
 
 type FetchFn = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
+type SleepFn = (ms: number) => Promise<void>;
+type NowFn = () => number;
 
-export interface WikidataProviderOptions {
+export interface WikidataApiClientOptions {
   fetchFn?: FetchFn;
+  cacheTtlMs?: number;
+  maxCacheEntries?: number;
+  maxConcurrent?: number;
+  max429Retries?: number;
+  maxRetryAfterMs?: number;
+  sleepFn?: SleepFn;
+  nowFn?: NowFn;
+}
+
+export interface WikidataProviderOptions extends WikidataApiClientOptions {
   apiBaseUrl?: string;
+  client?: WikidataApiClient;
 }
 
 const DEFAULT_API_BASE_URL = 'https://www.wikidata.org/w/api.php';
 const API_USER_AGENT = 'TubeScore/0.1 (https://github.com/tim8es/TubeScore)';
+const DEFAULT_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+const DEFAULT_MAX_CACHE_ENTRIES = 256;
+const DEFAULT_MAX_CONCURRENT = 3;
+const DEFAULT_MAX_429_RETRIES = 2;
+const DEFAULT_MAX_RETRY_AFTER_MS = 30_000;
+const DEFAULT_RETRY_DELAY_MS = 1_000;
 const ITEM_ID = /^Q\d+$/;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -38,6 +57,10 @@ function defaultFetch(): FetchFn {
   return globalThis.fetch.bind(globalThis);
 }
 
+function defaultSleep(ms: number): Promise<void> {
+  return new Promise((resolve) => globalThis.setTimeout(resolve, ms));
+}
+
 function commonHeaders(): HeadersInit {
   return {
     Accept: 'application/json',
@@ -45,26 +68,150 @@ function commonHeaders(): HeadersInit {
   };
 }
 
-async function fetchJson(fetchFn: FetchFn, url: URL): Promise<unknown> {
-  let response: Response;
-  try {
-    response = await fetchFn(url, {
-      method: 'GET',
-      cache: 'force-cache',
-      headers: commonHeaders()
+function positiveInteger(value: number | undefined, fallback: number): number {
+  if (value === undefined || !Number.isFinite(value)) return fallback;
+  return Math.max(1, Math.floor(value));
+}
+
+function nonNegativeInteger(value: number | undefined, fallback: number): number {
+  if (value === undefined || !Number.isFinite(value)) return fallback;
+  return Math.max(0, Math.floor(value));
+}
+
+interface CacheEntry {
+  expiresAt: number;
+  value: unknown;
+}
+
+export class WikidataApiClient {
+  private readonly fetchFn: FetchFn;
+  private readonly sleepFn: SleepFn;
+  private readonly nowFn: NowFn;
+  private readonly cacheTtlMs: number;
+  private readonly maxCacheEntries: number;
+  private readonly maxConcurrent: number;
+  private readonly max429Retries: number;
+  private readonly maxRetryAfterMs: number;
+  private readonly cache = new Map<string, CacheEntry>();
+  private readonly inFlight = new Map<string, Promise<unknown>>();
+  private readonly waiters: Array<() => void> = [];
+  private activeCount = 0;
+
+  constructor(options: WikidataApiClientOptions = {}) {
+    this.fetchFn = options.fetchFn ?? defaultFetch();
+    this.sleepFn = options.sleepFn ?? defaultSleep;
+    this.nowFn = options.nowFn ?? Date.now;
+    this.cacheTtlMs = nonNegativeInteger(options.cacheTtlMs, DEFAULT_CACHE_TTL_MS);
+    this.maxCacheEntries = positiveInteger(options.maxCacheEntries, DEFAULT_MAX_CACHE_ENTRIES);
+    this.maxConcurrent = positiveInteger(options.maxConcurrent, DEFAULT_MAX_CONCURRENT);
+    this.max429Retries = nonNegativeInteger(options.max429Retries, DEFAULT_MAX_429_RETRIES);
+    this.maxRetryAfterMs = nonNegativeInteger(options.maxRetryAfterMs, DEFAULT_MAX_RETRY_AFTER_MS);
+  }
+
+  async getJson(url: URL): Promise<unknown> {
+    const key = url.toString();
+    const cached = this.cache.get(key);
+    if (cached && cached.expiresAt > this.nowFn()) {
+      this.cache.delete(key);
+      this.cache.set(key, cached);
+      return cached.value;
+    }
+    if (cached) this.cache.delete(key);
+
+    const existing = this.inFlight.get(key);
+    if (existing) return existing;
+
+    const request = this.loadJson(url)
+      .then((value) => {
+        if (this.cacheTtlMs > 0) this.storeCache(key, value);
+        return value;
+      })
+      .finally(() => {
+        this.inFlight.delete(key);
+      });
+    this.inFlight.set(key, request);
+    return request;
+  }
+
+  private storeCache(key: string, value: unknown): void {
+    if (this.cache.has(key)) this.cache.delete(key);
+    while (this.cache.size >= this.maxCacheEntries) {
+      const oldest = this.cache.keys().next().value as string | undefined;
+      if (oldest === undefined) break;
+      this.cache.delete(oldest);
+    }
+    this.cache.set(key, { expiresAt: this.nowFn() + this.cacheTtlMs, value });
+  }
+
+  private async loadJson(url: URL): Promise<unknown> {
+    for (let attempt = 0; ; attempt += 1) {
+      const response = await this.withPermit(async () => {
+        let fetched: Response;
+        try {
+          fetched = await this.fetchFn(url, {
+            method: 'GET',
+            cache: 'no-store',
+            headers: commonHeaders()
+          });
+        } catch (cause) {
+          throw new WikidataProviderError('http_error', { cause });
+        }
+        return fetched;
+      });
+
+      if (response.status === 429 && attempt < this.max429Retries) {
+        await this.sleepFn(this.retryDelayMs(response.headers.get('Retry-After'), attempt));
+        continue;
+      }
+
+      if (!response.ok) {
+        throw new WikidataProviderError('http_error', { status: response.status });
+      }
+
+      try {
+        return await response.json();
+      } catch (cause) {
+        throw new WikidataProviderError('invalid_json', { cause });
+      }
+    }
+  }
+
+  private retryDelayMs(retryAfter: string | null, attempt: number): number {
+    let delay = DEFAULT_RETRY_DELAY_MS * (attempt + 1);
+    if (retryAfter) {
+      const seconds = Number(retryAfter);
+      if (Number.isFinite(seconds) && seconds >= 0) {
+        delay = seconds * 1000;
+      } else {
+        const date = Date.parse(retryAfter);
+        if (Number.isFinite(date)) delay = Math.max(0, date - this.nowFn());
+      }
+    }
+    return Math.min(this.maxRetryAfterMs, Math.max(0, Math.floor(delay)));
+  }
+
+  private withPermit<T>(task: () => Promise<T>): Promise<T> {
+    if (this.activeCount < this.maxConcurrent) {
+      this.activeCount += 1;
+      return this.executeWithPermit(task);
+    }
+
+    return new Promise<T>((resolve, reject) => {
+      this.waiters.push(() => {
+        this.activeCount += 1;
+        this.executeWithPermit(task).then(resolve, reject);
+      });
     });
-  } catch (cause) {
-    throw new WikidataProviderError('http_error', { cause });
   }
 
-  if (!response.ok) {
-    throw new WikidataProviderError('http_error', { status: response.status });
-  }
-
-  try {
-    return await response.json();
-  } catch (cause) {
-    throw new WikidataProviderError('invalid_json', { cause });
+  private async executeWithPermit<T>(task: () => Promise<T>): Promise<T> {
+    try {
+      return await task();
+    } finally {
+      this.activeCount -= 1;
+      const next = this.waiters.shift();
+      if (next) next();
+    }
   }
 }
 
@@ -172,11 +319,11 @@ function entityFromPayload(payload: unknown, id: string): Record<string, unknown
 }
 
 export class WikidataPublicCatalogProvider {
-  private readonly fetchFn: FetchFn;
+  private readonly client: WikidataApiClient;
   private readonly apiBaseUrl: string;
 
   constructor(options: WikidataProviderOptions = {}) {
-    this.fetchFn = options.fetchFn ?? defaultFetch();
+    this.client = options.client ?? new WikidataApiClient(options);
     this.apiBaseUrl = options.apiBaseUrl ?? DEFAULT_API_BASE_URL;
   }
 
@@ -194,7 +341,7 @@ export class WikidataPublicCatalogProvider {
     url.searchParams.set('format', 'json');
     url.searchParams.set('origin', '*');
 
-    const payload = await fetchJson(this.fetchFn, url);
+    const payload = await this.client.getJson(url);
     if (!isRecord(payload) || !Array.isArray(payload.search)) {
       throw new WikidataProviderError('invalid_response');
     }
@@ -206,11 +353,11 @@ export class WikidataPublicCatalogProvider {
 }
 
 export class WikidataPublicRatingsProvider {
-  private readonly fetchFn: FetchFn;
+  private readonly client: WikidataApiClient;
   private readonly apiBaseUrl: string;
 
   constructor(options: WikidataProviderOptions = {}) {
-    this.fetchFn = options.fetchFn ?? defaultFetch();
+    this.client = options.client ?? new WikidataApiClient(options);
     this.apiBaseUrl = options.apiBaseUrl ?? DEFAULT_API_BASE_URL;
   }
 
@@ -252,7 +399,7 @@ export class WikidataPublicRatingsProvider {
     url.searchParams.set('languages', 'en');
     url.searchParams.set('format', 'json');
     url.searchParams.set('origin', '*');
-    const payload = await fetchJson(this.fetchFn, url);
+    const payload = await this.client.getJson(url);
     return entityFromPayload(payload, id);
   }
 }
