@@ -54,11 +54,18 @@ export function renderRatingCard(result: RecognitionResult): HTMLElement {
   const ratings = document.createElement('div');
   ratings.className = 'tubescore-card__ratings';
 
-  for (const rating of result.ratings) {
+  if (result.ratings.length === 0) {
     const item = document.createElement('span');
     item.className = 'tubescore-card__rating';
-    item.textContent = formatRating(rating.source, rating.value, rating.scale);
+    item.textContent = 'No rating available';
     ratings.append(item);
+  } else {
+    for (const rating of result.ratings) {
+      const item = document.createElement('span');
+      item.className = 'tubescore-card__rating';
+      item.textContent = formatRating(rating.source, rating.value, rating.scale);
+      ratings.append(item);
+    }
   }
 
   card.append(header, title, meta, ratings);
