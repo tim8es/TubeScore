@@ -1,7 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   ImdbPublicCatalogProvider,
-  ImdbPublicProviderError,
   ImdbPublicRatingsProvider
 } from '../../src/providers/imdb/imdb-public-provider';
 
@@ -62,7 +61,7 @@ describe('IMDb public providers', () => {
       suggestionBaseUrl,
       fetchFn: async () => new Response('blocked', { status: 503 })
     });
-    await expect(httpProvider.search('Dune')).rejects.toMatchObject<Partial<ImdbPublicProviderError>>({
+    await expect(httpProvider.search('Dune')).rejects.toMatchObject({
       code: 'http_error',
       status: 503
     });
@@ -71,7 +70,7 @@ describe('IMDb public providers', () => {
       suggestionBaseUrl,
       fetchFn: async () => new Response('{bad-json', { status: 200 })
     });
-    await expect(jsonProvider.search('Dune')).rejects.toMatchObject<Partial<ImdbPublicProviderError>>({
+    await expect(jsonProvider.search('Dune')).rejects.toMatchObject({
       code: 'invalid_json'
     });
   });
@@ -122,7 +121,7 @@ describe('IMDb public providers', () => {
       providerId: 'tt15239678',
       mediaType: 'movie',
       title: 'Dune: Part Two'
-    })).rejects.toMatchObject<Partial<ImdbPublicProviderError>>({
+    })).rejects.toMatchObject({
       code: 'rating_unavailable'
     });
   });
@@ -135,7 +134,7 @@ describe('IMDb public providers', () => {
       providerId: '../etc/passwd',
       mediaType: 'movie',
       title: 'Bad'
-    })).rejects.toMatchObject<Partial<ImdbPublicProviderError>>({
+    })).rejects.toMatchObject({
       code: 'invalid_candidate'
     });
     expect(fetchFn).not.toHaveBeenCalled();
