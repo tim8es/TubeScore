@@ -61,6 +61,55 @@ describe('zero-config production recognition orchestrator', () => {
     expect(fetchFn.mock.calls.some(([input]) => new URL(String(input)).searchParams.get('action') === 'wbsearchentities')).toBe(false);
   });
 
+  it('treats an exact P1651 match as authoritative when the YouTube marketing title is longer than the canonical film title', async () => {
+    const f1Context: YouTubeVideoContext = {
+      videoId: '8yh9BPUBbbQ',
+      title: 'F1® The Movie | Main Trailer',
+      description: 'F1® The Movie, directed by Joseph Kosinski and starring Brad Pitt.',
+      channelName: 'Warner Bros. Pictures',
+      hashtags: ['F1TheMovie'],
+      url: 'https://www.youtube.com/watch?v=8yh9BPUBbbQ'
+    };
+
+    const fetchFn = vi.fn(async (input: RequestInfo | URL) => {
+      const url = new URL(String(input));
+      const action = url.searchParams.get('action');
+
+      if (action === 'query' && url.searchParams.get('list') === 'search') {
+        expect(url.searchParams.get('srsearch')).toBe('haswbstatement:P1651=8yh9BPUBbbQ');
+        return jsonResponse({ query: { search: [{ title: 'Q114246242' }] } });
+      }
+      if (action === 'wbgetentities' && url.searchParams.get('ids') === 'Q114246242' && url.searchParams.get('props') === 'labels|descriptions') {
+        return jsonResponse({
+          entities: {
+            Q114246242: {
+              labels: { en: { value: 'F1' } },
+              descriptions: { en: { value: '2025 film directed by Joseph Kosinski' } }
+            }
+          }
+        });
+      }
+      if (action === 'wbgetentities' && url.searchParams.get('ids') === 'Q114246242') {
+        return jsonResponse({ entities: { Q114246242: { claims: {} } } });
+      }
+      if (action === 'wbsearchentities') {
+        throw new Error('title search must not veto an exact P1651 match');
+      }
+      throw new Error(`unexpected_url:${url}`);
+    });
+
+    const result = await createPublicRecognitionOrchestrator({ fetchFn })(f1Context);
+
+    expect(result?.decision.state).toBe('high');
+    expect(result?.decision.score.candidate).toMatchObject({
+      providerId: 'Q114246242',
+      title: 'F1',
+      releaseYear: 2025
+    });
+    expect(result?.decision.score.reasons).toContain('youtube-video-id-match');
+    expect(fetchFn.mock.calls.some(([input]) => new URL(String(input)).searchParams.get('action') === 'wbsearchentities')).toBe(false);
+  });
+
   it('recognizes and rates through Wikidata without runtime config or credentials', async () => {
     const fetchFn = vi.fn(async (input: RequestInfo | URL, _init?: RequestInit) => {
       const url = new URL(String(input));
