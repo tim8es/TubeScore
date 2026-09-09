@@ -9,6 +9,7 @@ on:
       - 'manifest.json'
       - 'scripts/build.mjs'
       - 'scripts/browser-smoke.mjs'
+      - 'scripts/final-browser-gate.mjs'
       - 'scripts/extension-worker-network-smoke.mjs'
       - 'scripts/youtube-trace-smoke.mjs'
       - '.github/workflows/browser-smoke.yml'
@@ -35,8 +36,8 @@ jobs:
         run: xvfb-run -a node scripts/extension-worker-network-smoke.mjs
       - name: Capture live YouTube production fetch trace
         run: xvfb-run -a node scripts/youtube-trace-smoke.mjs
-      - name: Run isolated real browser smoke
-        run: xvfb-run -a node scripts/browser-smoke.mjs
+      - name: Run final isolated browser gate
+        run: xvfb-run -a node scripts/final-browser-gate.mjs
       - name: Upload browser smoke evidence
         if: always()
         uses: actions/upload-artifact@v4
