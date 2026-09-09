@@ -110,7 +110,7 @@ describe('zero-config production recognition orchestrator', () => {
     expect(fetchFn.mock.calls.some(([input]) => new URL(String(input)).searchParams.get('action') === 'wbsearchentities')).toBe(false);
   });
 
-  it('recognizes and rates through Wikidata without runtime config or credentials', async () => {
+  it('recognizes and returns multiple Wikidata ratings without runtime config or credentials', async () => {
     const fetchFn = vi.fn(async (input: RequestInfo | URL, _init?: RequestInit) => {
       const url = new URL(String(input));
       const action = url.searchParams.get('action');
@@ -126,20 +126,34 @@ describe('zero-config production recognition orchestrator', () => {
             Q109228991: {
               id: 'Q109228991',
               claims: {
-                P444: [{
-                  rank: 'preferred',
-                  mainsnak: { datavalue: { value: '79/100' } },
-                  qualifiers: { P447: [{ datavalue: { value: { id: 'Q150248' } } }] }
-                }]
+                P444: [
+                  {
+                    rank: 'preferred',
+                    mainsnak: { datavalue: { value: '79/100' } },
+                    qualifiers: { P447: [{ datavalue: { value: { id: 'Q101' } } }] }
+                  },
+                  {
+                    rank: 'normal',
+                    mainsnak: { datavalue: { value: '92%' } },
+                    qualifiers: { P447: [{ datavalue: { value: { id: 'Q102' } } }] }
+                  },
+                  {
+                    rank: 'normal',
+                    mainsnak: { datavalue: { value: '8.4/10' } },
+                    qualifiers: { P447: [{ datavalue: { value: { id: 'Q103' } } }] }
+                  }
+                ]
               }
             }
           }
         });
       }
-      if (action === 'wbgetentities' && url.searchParams.get('ids') === 'Q150248') {
+      if (action === 'wbgetentities' && url.searchParams.get('ids') === 'Q101|Q102|Q103') {
         return jsonResponse({
           entities: {
-            Q150248: { id: 'Q150248', labels: { en: { language: 'en', value: 'Metacritic' } } }
+            Q101: { labels: { en: { value: 'Metacritic' } } },
+            Q102: { labels: { en: { value: 'Rotten Tomatoes' } } },
+            Q103: { labels: { en: { value: 'Internet Movie Database' } } }
           }
         });
       }
@@ -155,12 +169,26 @@ describe('zero-config production recognition orchestrator', () => {
       title: 'Dune: Part Two',
       releaseYear: 2024
     });
-    expect(result?.ratings).toEqual([{
-      source: 'Metacritic via Wikidata',
-      value: 79,
-      scale: 100,
-      url: 'https://www.wikidata.org/wiki/Q109228991'
-    }]);
+    expect(result?.ratings).toEqual([
+      {
+        source: 'IMDb via Wikidata',
+        value: 8.4,
+        scale: 10,
+        url: 'https://www.wikidata.org/wiki/Q109228991'
+      },
+      {
+        source: 'Rotten Tomatoes via Wikidata',
+        value: 92,
+        scale: 100,
+        url: 'https://www.wikidata.org/wiki/Q109228991'
+      },
+      {
+        source: 'Metacritic via Wikidata',
+        value: 79,
+        scale: 100,
+        url: 'https://www.wikidata.org/wiki/Q109228991'
+      }
+    ]);
     expect(fetchFn).toHaveBeenCalledTimes(4);
     for (const [, init] of fetchFn.mock.calls) {
       const headers = new Headers(init?.headers);
