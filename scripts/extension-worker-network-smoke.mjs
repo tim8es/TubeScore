@@ -53,7 +53,7 @@ try {
 
     try {
       const response = await fetchWithTimeout(suggestionUrl, {
-        cache: 'no-store',
+        cache: 'force-cache',
         headers: { Accept: 'application/json' }
       });
       const text = await response.text();
@@ -75,7 +75,7 @@ try {
 
     try {
       const response = await fetchWithTimeout(datasetUrl, {
-        cache: 'no-store',
+        cache: 'force-cache',
         headers: { Accept: 'application/gzip, application/octet-stream, text/tab-separated-values' }
       }, 90000);
       const buffer = await response.arrayBuffer();
