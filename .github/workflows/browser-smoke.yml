@@ -1,0 +1,44 @@
+name: Browser Smoke
+
+on:
+  push:
+    branches:
+      - feat/mvp-vertical-slice
+    paths:
+      - 'src/**'
+      - 'manifest.json'
+      - 'scripts/build.mjs'
+      - 'scripts/final-browser-gate.mjs'
+      - 'scripts/extension-worker-network-smoke.mjs'
+      - '.github/workflows/browser-smoke.yml'
+  workflow_dispatch:
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install project dependencies
+        run: npm install --no-audit --no-fund
+      - name: Install Playwright Chromium for smoke only
+        run: |
+          npm install --no-save --no-audit --no-fund playwright@1.55.0
+          npx playwright install --with-deps chromium
+      - name: Build unpacked extension
+        run: npm run build
+      - name: Capture Wikidata worker network evidence
+        run: xvfb-run -a node scripts/extension-worker-network-smoke.mjs
+      - name: Run final isolated Wikidata browser gate
+        run: xvfb-run -a node scripts/final-browser-gate.mjs
+      - name: Upload browser smoke evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-smoke-evidence-${{ github.sha }}
+          path: browser-smoke-artifacts/
+          if-no-files-found: warn
+          retention-days: 14

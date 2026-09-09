@@ -1,0 +1,13 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "rewrites": [
+    {
+      "source": "/api/tmdb/search",
+      "destination": "/api/tmdb?__proxy_path=search"
+    },
+    {
+      "source": "/api/tmdb/:media/:id",
+      "destination": "/api/tmdb?__proxy_path=:media/:id"
+    }
+  ]
+}
