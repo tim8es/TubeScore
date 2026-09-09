@@ -1,0 +1,35 @@
+name: Browser Smoke
+
+on:
+  push:
+    branches:
+      - feat/mvp-vertical-slice
+  workflow_dispatch:
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install project dependencies
+        run: npm install --no-audit --no-fund
+      - name: Install Playwright Chromium for smoke only
+        run: |
+          npm install --no-save --no-audit --no-fund playwright@1.55.0
+          npx playwright install --with-deps chromium
+      - name: Build unpacked extension
+        run: npm run build
+      - name: Run isolated real browser smoke
+        run: xvfb-run -a node scripts/browser-smoke.mjs
+      - name: Upload browser smoke evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-smoke-evidence-${{ github.sha }}
+          path: browser-smoke-artifacts/
+          if-no-files-found: warn
+          retention-days: 14
