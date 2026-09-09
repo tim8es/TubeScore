@@ -12,7 +12,7 @@ type FetchFn = (input: RequestInfo | URL, init?: RequestInit) => Promise<Respons
 export interface PublicRecognitionOrchestratorOptions {
   fetchFn?: FetchFn;
   suggestionBaseUrl?: string;
-  titleBaseUrl?: string;
+  ratingsDatasetUrl?: string;
 }
 
 function bestScore(
@@ -38,7 +38,7 @@ export function createPublicRecognitionOrchestrator(
   });
   const ratings = new ImdbPublicRatingsProvider({
     ...(options.fetchFn ? { fetchFn: options.fetchFn } : {}),
-    ...(options.titleBaseUrl ? { titleBaseUrl: options.titleBaseUrl } : {})
+    ...(options.ratingsDatasetUrl ? { ratingsDatasetUrl: options.ratingsDatasetUrl } : {})
   });
 
   return async (context) => {
