@@ -10,6 +10,7 @@ on:
       - 'scripts/build.mjs'
       - 'scripts/final-browser-gate.mjs'
       - 'scripts/extension-worker-network-smoke.mjs'
+      - 'scripts/wikidata-spa-trace.mjs'
       - '.github/workflows/browser-smoke.yml'
   workflow_dispatch:
 
@@ -32,6 +33,8 @@ jobs:
         run: npm run build
       - name: Capture Wikidata worker network evidence
         run: xvfb-run -a node scripts/extension-worker-network-smoke.mjs
+      - name: Trace Wikidata SPA boundary
+        run: xvfb-run -a node scripts/wikidata-spa-trace.mjs
       - name: Run final isolated Wikidata browser gate
         run: xvfb-run -a node scripts/final-browser-gate.mjs
       - name: Upload browser smoke evidence
