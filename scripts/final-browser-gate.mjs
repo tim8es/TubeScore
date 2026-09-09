@@ -12,6 +12,7 @@ const report = {
   status: 'running',
   userChromeTouched: false,
   secretsUsed: false,
+  provider: 'Wikidata',
   browser: null,
   first: null,
   spa: null,
@@ -100,6 +101,10 @@ async function clickVisibleTarget(page) {
   return 'visible-dom-fallback';
 }
 
+function hasWikidataRating(text) {
+  return /(?:via Wikidata|Wikidata)\s+\d+(?:\.\d+)?\/(?:5|10|100)/i.test(text);
+}
+
 async function runSuccess(root) {
   const profile = join(root, 'success-profile');
   const context = await launch(DIST, profile);
@@ -113,15 +118,12 @@ async function runSuccess(root) {
     report.first = first;
     log('first_overlay', first);
     if (!['high', 'likely'].includes(first.state ?? '')) throw new Error(`first_state:${first.state}`);
-    if (!/Dune: Part Two/i.test(first.text) || !/IMDb\s+\d+(?:\.\d+)?\/10/.test(first.text)) {
-      throw new Error(`first_overlay_content:${first.text}`);
-    }
+    if (!/Dune: Part Two/i.test(first.text) || !hasWikidataRating(first.text)) throw new Error(`first_overlay_content:${first.text}`);
     if (first.count !== 1) throw new Error(`first_overlay_count:${first.count}`);
-    await page.screenshot({ path: join(OUT, 'final-01-rating-overlay.png'), fullPage: false });
+    await page.screenshot({ path: join(OUT, 'final-01-wikidata-rating-overlay.png'), fullPage: false });
 
     const marker = `tubescore-${Date.now()}-${Math.random().toString(16).slice(2)}`;
     await page.evaluate((value) => { window.__tubeScoreFinalMarker = value; }, marker);
-
     const search = page.locator('input[name="search_query"], input#search').first();
     await search.waitFor({ state: 'visible', timeout: 20000 });
     await search.click();
@@ -137,9 +139,9 @@ async function runSuccess(root) {
     log('spa_overlay', report.spa);
     if (!markerPreserved) throw new Error('spa_document_replaced');
     if (!['high', 'likely'].includes(second.state ?? '')) throw new Error(`spa_state:${second.state}`);
-    if (!/IMDb\s+\d+(?:\.\d+)?\/10/.test(second.text)) throw new Error(`spa_missing_rating:${second.text}`);
+    if (!hasWikidataRating(second.text)) throw new Error(`spa_missing_wikidata_rating:${second.text}`);
     if (second.count !== 1) throw new Error(`spa_overlay_count:${second.count}`);
-    await page.screenshot({ path: join(OUT, 'final-02-spa-overlay.png'), fullPage: false });
+    await page.screenshot({ path: join(OUT, 'final-02-wikidata-spa-overlay.png'), fullPage: false });
   } finally {
     await context.close();
   }
@@ -150,7 +152,7 @@ async function faultDist(root) {
   await cp(DIST, dir, { recursive: true });
   const path = join(dir, 'service-worker.js');
   const worker = await readFile(path, 'utf8');
-  const prelude = `const __tsRealFetch = globalThis.fetch.bind(globalThis);\nglobalThis.fetch = (input, init) => {\n  const url = String(input);\n  if (url.includes('datasets.imdbws.com/title.ratings.tsv.gz')) return Promise.reject(new Error('tubescore_smoke_dataset_failure'));\n  return __tsRealFetch(input, init);\n};\n`;
+  const prelude = `const __tsRealFetch = globalThis.fetch.bind(globalThis);\nglobalThis.fetch = (input, init) => {\n  const url = String(input);\n  if (url.includes('www.wikidata.org/w/api.php') && url.includes('action=wbgetentities')) return Promise.reject(new Error('tubescore_smoke_wikidata_failure'));\n  return __tsRealFetch(input, init);\n};\n`;
   await writeFile(path, prelude + worker);
   return dir;
 }
@@ -169,9 +171,9 @@ async function runError(root) {
     log('provider_error_overlay', card);
     if (card.state !== 'error') throw new Error(`provider_error_state:${card.state}`);
     if (!/TubeScore\s*·\s*Unavailable/i.test(card.text)) throw new Error(`provider_error_copy:${card.text}`);
-    if (/tubescore_smoke|dataset_failure/i.test(card.text)) throw new Error('provider_error_leaked_internal_detail');
+    if (/tubescore_smoke|wikidata_failure/i.test(card.text)) throw new Error('provider_error_leaked_internal_detail');
     if (card.count !== 1) throw new Error(`provider_error_count:${card.count}`);
-    await page.screenshot({ path: join(OUT, 'final-03-provider-error.png'), fullPage: false });
+    await page.screenshot({ path: join(OUT, 'final-03-wikidata-provider-error.png'), fullPage: false });
   } finally {
     await context.close();
   }
