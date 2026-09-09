@@ -12,6 +12,10 @@ function jsonResponse(payload: unknown): Response {
   });
 }
 
+function exactIdMiss(): Response {
+  return jsonResponse({ query: { search: [] } });
+}
+
 const onslaught: YouTubeVideoContext = {
   videoId: 'AMLCbpM1fRQ',
   title: 'Onslaught | Official Trailer 2 HD | A24',
@@ -62,6 +66,7 @@ describe('manual YouTube regression cases', () => {
     const fetchFn = vi.fn(async (input: RequestInfo | URL) => {
       const url = new URL(String(input));
       const action = url.searchParams.get('action');
+      if (action === 'query') return exactIdMiss();
       if (action === 'wbsearchentities') {
         const query = url.searchParams.get('search');
         return jsonResponse({
@@ -105,6 +110,7 @@ describe('manual YouTube regression cases', () => {
     const seenQueries: string[] = [];
     const fetchFn = vi.fn(async (input: RequestInfo | URL) => {
       const url = new URL(String(input));
+      if (url.searchParams.get('action') === 'query') return exactIdMiss();
       if (url.searchParams.get('action') === 'wbsearchentities') {
         const query = url.searchParams.get('search') ?? '';
         seenQueries.push(query);
@@ -139,6 +145,7 @@ describe('manual YouTube regression cases', () => {
     const fetchFn = vi.fn(async (input: RequestInfo | URL) => {
       const url = new URL(String(input));
       const action = url.searchParams.get('action');
+      if (action === 'query') return exactIdMiss();
       if (action === 'wbsearchentities') {
         const query = url.searchParams.get('search') ?? '';
         seenQueries.push(query);
@@ -179,6 +186,7 @@ describe('manual YouTube regression cases', () => {
   it('renders a recognized title with no P444 as no-rating rather than a provider error', async () => {
     const fetchFn = vi.fn(async (input: RequestInfo | URL) => {
       const url = new URL(String(input));
+      if (url.searchParams.get('action') === 'query') return exactIdMiss();
       if (url.searchParams.get('action') === 'wbsearchentities') {
         return jsonResponse({
           search: [{ id: 'Q300', label: 'The Odyssey', description: '2026 film directed by Christopher Nolan' }]
