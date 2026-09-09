@@ -3,6 +3,7 @@ import { decideMatch } from '../core/match-decision';
 import { buildSearchQueries } from '../core/query-builder';
 import type { CatalogCandidate, MatchScore, RecognitionResult, YouTubeVideoContext } from '../core/types';
 import {
+  WikidataApiClient,
   WikidataPublicCatalogProvider,
   WikidataPublicRatingsProvider
 } from '../providers/wikidata/wikidata-public-provider';
@@ -29,8 +30,9 @@ function bestScore(
 export function createPublicRecognitionOrchestrator(
   options: PublicRecognitionOrchestratorOptions = {}
 ): (context: YouTubeVideoContext) => Promise<RecognitionResult | null> {
+  const client = new WikidataApiClient(options.fetchFn ? { fetchFn: options.fetchFn } : {});
   const providerOptions = {
-    ...(options.fetchFn ? { fetchFn: options.fetchFn } : {}),
+    client,
     ...(options.apiBaseUrl ? { apiBaseUrl: options.apiBaseUrl } : {})
   };
   const catalog = new WikidataPublicCatalogProvider(providerOptions);
