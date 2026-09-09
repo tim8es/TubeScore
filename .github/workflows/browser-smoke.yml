@@ -9,6 +9,7 @@ on:
       - 'manifest.json'
       - 'scripts/build.mjs'
       - 'scripts/browser-smoke.mjs'
+      - 'scripts/extension-worker-network-smoke.mjs'
       - '.github/workflows/browser-smoke.yml'
   workflow_dispatch:
 
@@ -29,6 +30,8 @@ jobs:
           npx playwright install --with-deps chromium
       - name: Build unpacked extension
         run: npm run build
+      - name: Capture extension worker network evidence
+        run: xvfb-run -a node scripts/extension-worker-network-smoke.mjs
       - name: Run isolated real browser smoke
         run: xvfb-run -a node scripts/browser-smoke.mjs
       - name: Upload browser smoke evidence
