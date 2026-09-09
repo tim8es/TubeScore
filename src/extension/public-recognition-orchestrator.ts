@@ -4,6 +4,7 @@ import { buildSearchQueries } from '../core/query-builder';
 import type { CatalogCandidate, MatchScore, RecognitionResult, YouTubeVideoContext } from '../core/types';
 import {
   WikidataApiClient,
+  WikidataProviderError,
   WikidataPublicCatalogProvider,
   WikidataPublicRatingsProvider
 } from '../providers/wikidata/wikidata-public-provider';
@@ -39,17 +40,25 @@ export function createPublicRecognitionOrchestrator(
   const ratings = new WikidataPublicRatingsProvider(providerOptions);
 
   return async (context) => {
-    const [query] = buildSearchQueries(context);
-    if (!query) return null;
+    for (const query of buildSearchQueries(context)) {
+      const candidates = await catalog.search(query);
+      const score = bestScore(context, candidates);
+      if (!score) continue;
 
-    const candidates = await catalog.search(query);
-    const score = bestScore(context, candidates);
-    if (!score) return null;
+      const decision = decideMatch(score);
+      if (decision.state === 'hidden') return { decision, ratings: [] };
 
-    const decision = decideMatch(score);
-    if (decision.state === 'hidden') return { decision, ratings: [] };
+      try {
+        const rating = await ratings.getRating(score.candidate);
+        return { decision, ratings: [rating] };
+      } catch (error) {
+        if (error instanceof WikidataProviderError && error.code === 'rating_unavailable') {
+          return { decision, ratings: [] };
+        }
+        throw error;
+      }
+    }
 
-    const rating = await ratings.getRating(score.candidate);
-    return { decision, ratings: [rating] };
+    return null;
   };
 }
