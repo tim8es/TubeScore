@@ -1,117 +1,57 @@
-# Production TMDB proxy architecture
+# Optional TMDB proxy fallback
 
-## Decision
+## Status
 
-TubeScore production releases must not contain a reusable TMDB credential.
+This architecture is retained as an optional fallback/reference. It is **not used by the current standard TubeScore service worker** and is not required to build, install, test, or run the extension.
 
-The selected minimal architecture is a thin serverless proxy:
+The active standard runtime is zero-config and uses public IMDb data:
+
+```text
+YouTube
+  -> IMDb public autocomplete
+  -> deterministic scorer / decision
+  -> IMDb public ratings dataset
+  -> TubeScore card
+```
+
+No TMDB token, deployed backend, proxy URL, or runtime storage is required by that path.
+
+## Why this code remains
+
+Earlier slices implemented a secure alternative for any future provider that requires a server-side credential. Keeping it in the repository preserves a reviewed example of how TubeScore can isolate a reusable secret from the extension bundle without weakening the active zero-config path.
+
+The optional architecture is:
 
 ```text
 Chrome extension
-  -> HTTPS proxy URL (public, non-secret)
+  -> HTTPS proxy URL
   -> strict operation/path validation
   -> server runtime secret
   -> api.themoviedb.org
 ```
 
-The repository contains a framework-free Fetch-compatible proxy core, a thin Vercel Function entrypoint, tokenless proxy-backed TMDB providers, and a proxy-backed recognition orchestrator. No deployment is performed by this repository state.
+Repository pieces:
 
-The existing unpacked development flow remains unchanged: local development can continue to use `chrome.storage.local` with a developer-supplied TMDB token. The production proxy path is separate and is not selected by the current unpacked build.
+- `src/proxy/tmdb-proxy.ts`
+- `src/proxy/runtime-config.ts`
+- `src/proxy/serverless-handler.ts`
+- `api/tmdb.ts`
+- `vercel.json`
+- `src/providers/tmdb/tmdb-proxy-provider.ts`
+- `src/extension/proxy-recognition-orchestrator.ts`
+- proxy/provider/orchestrator tests
 
-## Security boundaries
+These files are not reachable from `src/extension/service-worker.ts`, and the production build verifier fails if the bundled service worker contains `tmdbAccessToken`, `api.themoviedb.org`, `tubescoreRuntimeConfig`, or `chrome.storage`.
 
-The proxy deliberately does not expose a generic TMDB passthrough.
+## Security contract if the fallback is ever activated
 
-Allowed operations are only:
+Allowed proxy operations are limited to:
 
 - `GET /api/tmdb/search?query=...`
 - `GET /api/tmdb/movie/:numericId`
 - `GET /api/tmdb/tv/:numericId`
 - CORS `OPTIONS` for an allowed extension origin
 
-The proxy:
+The proxy validates query/path parameters, rejects arbitrary TMDB passthrough, normalizes upstream failures, and fails closed when server runtime configuration is missing.
 
-- obtains the TMDB credential only from server runtime configuration;
-- sends the credential to TMDB as a Bearer token server-side;
-- validates query length, locale, page, media type, and numeric ids;
-- ignores unknown search query parameters;
-- rejects arbitrary TMDB paths;
-- normalizes upstream failures instead of returning upstream error bodies;
-- fails closed when the server credential or origin allowlist is missing;
-- emits no credential value in responses or application-level errors;
-- returns cache headers for successful public TMDB metadata responses.
-
-`Origin` filtering is defense-in-depth for browser traffic, not authentication: non-browser clients can forge an Origin header. A public production deployment therefore still requires platform-level rate limiting / abuse controls before broad distribution.
-
-## Server runtime configuration
-
-Two deploy-time variables are required. Neither belongs in extension source, extension build artifacts, GitHub Actions logs, or documentation values.
-
-### `TMDB_ACCESS_TOKEN`
-
-Server-side TMDB API read token.
-
-- secret;
-- available only to the proxy function runtime;
-- never returned to the extension;
-- never supplied as a Vite/esbuild variable.
-
-### `TUBESCORE_ALLOWED_ORIGINS`
-
-Comma-separated allowlist of Chrome extension origins, for example conceptually:
-
-```text
-chrome-extension://<production-extension-id>
-```
-
-The repository intentionally contains no concrete production extension id.
-
-## Public extension runtime configuration
-
-The production extension needs only one non-secret value once the proxy is deployed:
-
-```json
-{
-  "tmdbProxyBaseUrl": "https://<deployed-host>/api/tmdb"
-}
-```
-
-This URL is public configuration and does not authenticate TMDB. `createProxyRecognitionOrchestrator()` validates the HTTPS URL and constructs tokenless proxy-backed catalog and ratings providers. Those providers never add an `Authorization` header.
-
-The current unpacked build intentionally continues to use the local developer-token path; selecting the proxy-backed orchestrator is a production build/entrypoint concern, not a credential distribution mechanism.
-
-Do not add `TMDB_ACCESS_TOKEN` to extension runtime configuration.
-
-## Vercel skeleton
-
-Repository pieces:
-
-- `src/proxy/tmdb-proxy.ts` — security and forwarding logic;
-- `src/proxy/runtime-config.ts` — deploy-time origin parsing contract;
-- `src/proxy/serverless-handler.ts` — serverless env adapter and rewrite normalization;
-- `api/tmdb.ts` — deployable function entrypoint;
-- `vercel.json` — rewrites for search and movie/TV detail paths;
-- `src/providers/tmdb/tmdb-proxy-provider.ts` — tokenless extension-side providers;
-- `src/extension/proxy-recognition-orchestrator.ts` — proxy-backed recognition factory;
-- `tests/proxy/*.test.ts` and proxy provider/orchestrator tests — security and failure-path coverage.
-
-No Vercel project, account, deployment, domain, extension id, or environment secret is created by this slice.
-
-## Deploy prerequisites
-
-Before a public deployment can serve production extension traffic, external infrastructure/state must exist:
-
-1. A serverless deployment project/domain.
-2. A valid TMDB read token stored as the server-side `TMDB_ACCESS_TOKEN` secret.
-3. The concrete Chrome extension origin for `TUBESCORE_ALLOWED_ORIGINS`.
-4. Platform-level rate limiting / abuse protection appropriate for expected traffic.
-
-## Smoke prerequisites
-
-A real end-to-end proxy smoke test requires external runtime state:
-
-1. A deployed HTTPS proxy URL.
-2. The server-side token configured on that deployment.
-3. The test extension origin allowed by the proxy.
-
-Until those exist, tests use mocked upstream responses and do not make a live TMDB request.
+Any future activation would require external deployment state such as a server-side TMDB token and abuse/rate controls. Those are prerequisites only for this optional fallback, **not release gates for the current zero-config IMDb build**.
