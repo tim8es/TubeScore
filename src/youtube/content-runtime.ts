@@ -79,11 +79,10 @@ export class YouTubeContentRuntime {
   }
 
   private scheduleRecognition(): void {
-    const runId = ++this.generation;
-    this.removeCard();
-
     const context = extractYouTubeVideoContext(this.document, this.window.location);
     if (!context) {
+      this.generation += 1;
+      this.removeCard();
       if (this.window.location.pathname !== '/watch') {
         this.lastVideoId = null;
         this.disarmMetadataObserver();
@@ -95,10 +94,11 @@ export class YouTubeContentRuntime {
     this.disarmMetadataObserver();
 
     if (context.videoId === this.lastVideoId) {
-      this.currentTask = Promise.resolve();
       return;
     }
 
+    const runId = ++this.generation;
+    this.removeCard();
     this.lastVideoId = context.videoId;
     this.currentTask = this.recognize(context)
       .then((result) => {
