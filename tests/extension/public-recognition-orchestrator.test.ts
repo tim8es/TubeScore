@@ -1,3 +1,4 @@
+import { gzipSync } from 'node:zlib';
 import { describe, expect, it, vi } from 'vitest';
 import type { YouTubeVideoContext } from '../../src/core/types';
 import { createPublicRecognitionOrchestrator } from '../../src/extension/public-recognition-orchestrator';
@@ -11,20 +12,16 @@ const context: YouTubeVideoContext = {
   url: 'https://www.youtube.com/watch?v=abc123'
 };
 
-function ratingHtml(value = 8.5, count = 650123): string {
-  return `<script type="application/ld+json">${JSON.stringify({
-    '@type': 'Movie',
-    name: 'Dune: Part Two',
-    aggregateRating: {
-      '@type': 'AggregateRating',
-      ratingValue: value,
-      ratingCount: count
-    }
-  })}</script>`;
+function ratingsDataset(): Uint8Array {
+  return new Uint8Array(gzipSync([
+    'tconst\taverageRating\tnumVotes',
+    'tt15239678\t8.5\t650123',
+    ''
+  ].join('\n')));
 }
 
 describe('zero-config production recognition orchestrator', () => {
-  it('recognizes and rates through IMDb without runtime config or credentials', async () => {
+  it('recognizes and rates through public IMDb data without runtime config or credentials', async () => {
     const fetchFn = vi.fn(async (input: RequestInfo | URL, _init?: RequestInit) => {
       const url = String(input);
       if (url.includes('sg.media-imdb.com/suggestion/')) {
@@ -32,8 +29,8 @@ describe('zero-config production recognition orchestrator', () => {
           d: [{ id: 'tt15239678', l: 'Dune: Part Two', y: 2024, qid: 'movie' }]
         }), { status: 200 });
       }
-      if (url === 'https://www.imdb.com/title/tt15239678/') {
-        return new Response(ratingHtml(), { status: 200 });
+      if (url === 'https://datasets.imdbws.com/title.ratings.tsv.gz') {
+        return new Response(ratingsDataset(), { status: 200 });
       }
       throw new Error(`unexpected_url:${url}`);
     });
@@ -60,7 +57,7 @@ describe('zero-config production recognition orchestrator', () => {
     }
   });
 
-  it('does not load a title page when the catalog match is hidden', async () => {
+  it('does not load the ratings dataset when the catalog match is hidden', async () => {
     const fetchFn = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => new Response(JSON.stringify({
       d: [{ id: 'tt0000001', l: 'Completely Different Film', y: 1900, qid: 'movie' }]
     }), { status: 200 }));
