@@ -8,8 +8,20 @@ const OUT = resolve('manual-regression-artifacts');
 const CASES = [
   { id: 'Mzw2ttJD2qQ', expectedTitle: /The Odyssey/i, screenshot: '01-the-odyssey.png', requireRating: true },
   { id: 'AMLCbpM1fRQ', expectedTitle: /Onslaught/i, screenshot: '02-onslaught.png', requireRating: false },
-  { id: 'Way9Dexny3w', expectedTitle: /Dune: Part Two/i, screenshot: '03-dune-part-two.png', requireRating: true },
-  { id: '8yh9BPUBbbQ', expectedTitle: /^.*F1.*$/i, screenshot: '04-f1-the-movie.png', requireRating: true }
+  {
+    id: 'Way9Dexny3w',
+    expectedTitle: /Dune: Part Two/i,
+    screenshot: '03-dune-part-two.png',
+    requireRating: true,
+    expectedSources: ['IMDb', 'Rotten Tomatoes', 'Metacritic']
+  },
+  {
+    id: '8yh9BPUBbbQ',
+    expectedTitle: /^.*F1.*$/i,
+    screenshot: '04-f1-the-movie.png',
+    requireRating: true,
+    expectedSources: ['IMDb', 'Rotten Tomatoes', 'Metacritic']
+  }
 ];
 const report = { status: 'running', browser: null, cases: [], providerError: null };
 const logs = [];
@@ -48,6 +60,9 @@ async function overlay(page, timeout = 120000) {
   return page.locator('.tubescore-card').first().evaluate((card) => ({
     state: card.getAttribute('data-tubescore-state'),
     text: card.textContent?.replace(/\s+/g, ' ').trim() ?? '',
+    ratings: Array.from(card.querySelectorAll('.tubescore-card__rating'))
+      .map((item) => item.textContent?.replace(/\s+/g, ' ').trim() ?? '')
+      .filter(Boolean),
     count: document.querySelectorAll('.tubescore-card').length
   }));
 }
@@ -95,6 +110,11 @@ async function runSuccessCases(root) {
       }
       if (testCase.requireRating && /No rating available|Unavailable|Ratings could not be loaded/i.test(card.text)) {
         throw new Error(`rating_missing:${testCase.id}:${card.text}`);
+      }
+      for (const source of testCase.expectedSources ?? []) {
+        if (!card.ratings.some((rating) => rating.includes(source))) {
+          throw new Error(`rating_source_missing:${testCase.id}:${source}:${card.ratings.join('|')}`);
+        }
       }
       await page.screenshot({ path: join(OUT, testCase.screenshot), fullPage: false });
     } finally {
