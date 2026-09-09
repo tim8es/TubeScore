@@ -15,6 +15,7 @@ export class YouTubeContentRuntime {
   private generation = 0;
   private lastVideoId: string | null = null;
   private currentTask: Promise<void> = Promise.resolve();
+  private metadataObserver: MutationObserver | null = null;
   private started = false;
 
   constructor(options: YouTubeContentRuntimeOptions) {
@@ -28,6 +29,7 @@ export class YouTubeContentRuntime {
     this.started = true;
     this.window.addEventListener('yt-navigate-finish', this.handleNavigation);
     this.window.addEventListener('popstate', this.handleNavigation);
+    this.armMetadataObserver();
     this.scheduleRecognition();
   }
 
@@ -37,6 +39,7 @@ export class YouTubeContentRuntime {
     this.generation += 1;
     this.window.removeEventListener('yt-navigate-finish', this.handleNavigation);
     this.window.removeEventListener('popstate', this.handleNavigation);
+    this.disarmMetadataObserver();
     this.removeCard();
   }
 
@@ -45,8 +48,34 @@ export class YouTubeContentRuntime {
   }
 
   private readonly handleNavigation = (): void => {
+    this.armMetadataObserver();
     this.scheduleRecognition();
   };
+
+  private armMetadataObserver(): void {
+    this.disarmMetadataObserver();
+
+    const root = this.document.documentElement;
+    if (!root) return;
+
+    const Observer = this.window.MutationObserver;
+    if (!Observer) return;
+
+    this.metadataObserver = new Observer(() => {
+      if (!this.started) return;
+      this.scheduleRecognition();
+    });
+    this.metadataObserver.observe(root, {
+      childList: true,
+      subtree: true,
+      characterData: true
+    });
+  }
+
+  private disarmMetadataObserver(): void {
+    this.metadataObserver?.disconnect();
+    this.metadataObserver = null;
+  }
 
   private scheduleRecognition(): void {
     const runId = ++this.generation;
@@ -54,10 +83,15 @@ export class YouTubeContentRuntime {
 
     const context = extractYouTubeVideoContext(this.document, this.window.location);
     if (!context) {
-      this.lastVideoId = null;
+      if (this.window.location.pathname !== '/watch') {
+        this.lastVideoId = null;
+        this.disarmMetadataObserver();
+      }
       this.currentTask = Promise.resolve();
       return;
     }
+
+    this.disarmMetadataObserver();
 
     if (context.videoId === this.lastVideoId) {
       this.currentTask = Promise.resolve();
