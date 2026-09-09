@@ -19,6 +19,44 @@ function jsonResponse(payload: unknown): Response {
 }
 
 describe('zero-config production recognition orchestrator', () => {
+  it('uses exact Wikidata P1651 YouTube-ID lookup before title search', async () => {
+    const calls: string[] = [];
+    const fetchFn = vi.fn(async (input: RequestInfo | URL) => {
+      const url = new URL(String(input));
+      const action = url.searchParams.get('action') ?? '';
+      calls.push(`${action}:${url.searchParams.get('list') ?? ''}:${url.searchParams.get('ids') ?? ''}`);
+
+      if (action === 'query' && url.searchParams.get('list') === 'search') {
+        expect(url.searchParams.get('srsearch')).toBe('haswbstatement:P1651=abc123');
+        return jsonResponse({ query: { search: [{ title: 'Q109228991' }] } });
+      }
+      if (action === 'wbgetentities' && url.searchParams.get('ids') === 'Q109228991' && url.searchParams.get('props') === 'labels|descriptions') {
+        return jsonResponse({
+          entities: {
+            Q109228991: {
+              labels: { en: { value: 'Dune: Part Two' } },
+              descriptions: { en: { value: '2024 film directed by Denis Villeneuve' } }
+            }
+          }
+        });
+      }
+      if (action === 'wbgetentities' && url.searchParams.get('ids') === 'Q109228991') {
+        return jsonResponse({ entities: { Q109228991: { claims: {} } } });
+      }
+      if (action === 'wbsearchentities') {
+        throw new Error('title search must not run after a visible exact-ID match');
+      }
+      throw new Error(`unexpected_url:${url}`);
+    });
+
+    const result = await createPublicRecognitionOrchestrator({ fetchFn })(context);
+
+    expect(result?.decision.state).toBe('high');
+    expect(result?.decision.score.candidate.providerId).toBe('Q109228991');
+    expect(calls[0]).toBe('query:search:');
+    expect(fetchFn.mock.calls.some(([input]) => new URL(String(input)).searchParams.get('action') === 'wbsearchentities')).toBe(false);
+  });
+
   it('recognizes and rates through Wikidata without runtime config or credentials', async () => {
     const fetchFn = vi.fn(async (input: RequestInfo | URL, _init?: RequestInit) => {
       const url = new URL(String(input));
