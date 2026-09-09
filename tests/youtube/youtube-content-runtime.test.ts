@@ -155,7 +155,7 @@ describe('YouTubeContentRuntime', () => {
     runtime.stop();
   });
 
-  it('keeps an in-flight recognition valid when YouTube repeats navigation for the same video', async () => {
+  it('keeps an in-flight recognition valid across a transient metadata gap for the same video', async () => {
     setWatchPage('dune', 'Dune: Part Two | Official Trailer');
 
     let resolveRecognition!: (result: RecognitionResult) => void;
@@ -168,7 +168,14 @@ describe('YouTubeContentRuntime', () => {
     runtime.start();
     expect(recognize).toHaveBeenCalledOnce();
 
+    document.querySelector('h1')?.remove();
     window.dispatchEvent(new Event('yt-navigate-finish'));
+    await Promise.resolve();
+    expect(recognize).toHaveBeenCalledOnce();
+
+    document.querySelector('main')?.insertAdjacentHTML('afterbegin', `
+      <h1 class="ytd-watch-metadata"><yt-formatted-string>Dune: Part Two | Official Trailer</yt-formatted-string></h1>
+    `);
     await Promise.resolve();
     expect(recognize).toHaveBeenCalledOnce();
 
