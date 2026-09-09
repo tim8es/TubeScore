@@ -25,7 +25,7 @@ jobs:
       - name: Install Playwright Chromium for smoke only
         run: |
           npm install --no-save --no-audit --no-fund playwright@1.55.0
-          npx playwright install --with-deps chromium
+          npx playwright install chromium
       - name: Build unpacked extension
         run: npm run build
       - name: Run reported YouTube regression gate
