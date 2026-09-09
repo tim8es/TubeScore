@@ -28,7 +28,7 @@ export interface ImdbPublicCatalogProviderOptions {
 
 export interface ImdbPublicRatingsProviderOptions {
   fetchFn?: FetchFn;
-  titleBaseUrl?: string;
+  ratingsDatasetUrl?: string;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -89,14 +89,13 @@ export class ImdbPublicCatalogProvider {
   }
 
   async search(query: string): Promise<CatalogCandidate[]> {
-    const normalizedQuery = query.trim();
+    const normalizedQuery = query.trim().toLocaleLowerCase();
     if (!normalizedQuery) return [];
 
     const url = new URL(`${this.suggestionBaseUrl}/${encodeURIComponent(normalizedQuery)}.json`);
-    url.searchParams.set('includeVideos', '0');
-
     const response = await this.fetchFn(url, {
       method: 'GET',
+      cache: 'force-cache',
       headers: { Accept: 'application/json' }
     });
 
@@ -125,70 +124,85 @@ export class ImdbPublicCatalogProvider {
   }
 }
 
-function parseFiniteNumber(value: unknown): number | null {
-  if (typeof value === 'number') return Number.isFinite(value) ? value : null;
-  if (typeof value !== 'string' || value.trim() === '') return null;
-  const parsed = Number(value.replace(/,/g, '').trim());
-  return Number.isFinite(parsed) ? parsed : null;
+async function decodeRatingsDataset(buffer: ArrayBuffer): Promise<string> {
+  const bytes = new Uint8Array(buffer);
+  const isGzip = bytes.length >= 2 && bytes[0] === 0x1f && bytes[1] === 0x8b;
+  if (!isGzip) return new TextDecoder().decode(bytes);
+
+  try {
+    const body = new Response(buffer).body;
+    if (!body) throw new Error('missing_body');
+    const stream = body.pipeThrough(new DecompressionStream('gzip'));
+    return await new Response(stream).text();
+  } catch {
+    throw new ImdbPublicProviderError(
+      'invalid_response',
+      'IMDb ratings dataset could not be decompressed'
+    );
+  }
 }
 
-function findAggregateRating(value: unknown): { value: number; voteCount: number } | null {
-  if (Array.isArray(value)) {
-    for (const item of value) {
-      const found = findAggregateRating(item);
-      if (found) return found;
-    }
+function findRatingRow(dataset: string, providerId: string): { value: number; voteCount: number } | null {
+  const marker = `\n${providerId}\t`;
+  const markerIndex = dataset.indexOf(marker);
+  if (markerIndex < 0) return null;
+
+  const rowStart = markerIndex + 1;
+  const rowEndIndex = dataset.indexOf('\n', rowStart);
+  const rowEnd = rowEndIndex < 0 ? dataset.length : rowEndIndex;
+  const row = dataset.slice(rowStart, rowEnd);
+  const [id, ratingRaw, votesRaw] = row.split('\t');
+  if (id !== providerId || ratingRaw === undefined || votesRaw === undefined) return null;
+
+  const value = Number(ratingRaw);
+  const voteCount = Number(votesRaw);
+  if (!Number.isFinite(value)
+    || value < 0
+    || value > 10
+    || !Number.isInteger(voteCount)
+    || voteCount < 0) {
     return null;
   }
 
-  if (!isRecord(value)) return null;
-
-  if (isRecord(value.aggregateRating)) {
-    const ratingValue = parseFiniteNumber(value.aggregateRating.ratingValue);
-    const ratingCount = parseFiniteNumber(value.aggregateRating.ratingCount);
-    if (ratingValue !== null
-      && ratingValue >= 0
-      && ratingValue <= 10
-      && ratingCount !== null
-      && Number.isInteger(ratingCount)
-      && ratingCount >= 0) {
-      return { value: ratingValue, voteCount: ratingCount };
-    }
-  }
-
-  if (Array.isArray(value['@graph'])) {
-    return findAggregateRating(value['@graph']);
-  }
-
-  return null;
-}
-
-export function parseImdbAggregateRating(html: string): { value: number; voteCount: number } | null {
-  const scriptPattern = /<script\b[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi;
-  for (const match of html.matchAll(scriptPattern)) {
-    const source = match[1]?.trim();
-    if (!source) continue;
-
-    let payload: unknown;
-    try {
-      payload = JSON.parse(source);
-    } catch {
-      continue;
-    }
-
-    const rating = findAggregateRating(payload);
-    if (rating) return rating;
-  }
-  return null;
+  return { value, voteCount };
 }
 
 export class ImdbPublicRatingsProvider {
   private readonly fetchFn: FetchFn;
-  private readonly titleBaseUrl: string;
+  private readonly ratingsDatasetUrl: string;
+  private datasetPromise: Promise<string> | null = null;
 
   constructor(options: ImdbPublicRatingsProviderOptions = {}) {
     this.fetchFn = options.fetchFn ?? fetch;
-    this.titleBaseUrl = normalizedBaseUrl(options.titleBaseUrl ?? 'https://www.imdb.com/title');
+    this.ratingsDatasetUrl = options.ratingsDatasetUrl
+      ?? 'https://datasets.imdbws.com/title.ratings.tsv.gz';
+  }
+
+  private async fetchDataset(): Promise<string> {
+    const response = await this.fetchFn(this.ratingsDatasetUrl, {
+      method: 'GET',
+      cache: 'force-cache',
+      headers: { Accept: 'application/gzip, application/octet-stream, text/tab-separated-values' }
+    });
+
+    if (!response.ok) {
+      throw new ImdbPublicProviderError(
+        'http_error',
+        `IMDb ratings dataset request failed with HTTP ${response.status}`,
+        response.status
+      );
+    }
+
+    return decodeRatingsDataset(await response.arrayBuffer());
+  }
+
+  private loadDataset(): Promise<string> {
+    if (this.datasetPromise) return this.datasetPromise;
+    this.datasetPromise = this.fetchDataset().catch((error: unknown) => {
+      this.datasetPromise = null;
+      throw error;
+    });
+    return this.datasetPromise;
   }
 
   async getRating(candidate: CatalogCandidate): Promise<RatingValue> {
@@ -196,25 +210,12 @@ export class ImdbPublicRatingsProvider {
       throw new ImdbPublicProviderError('invalid_candidate', 'IMDb candidate id is invalid');
     }
 
-    const url = `${this.titleBaseUrl}/${candidate.providerId}/`;
-    const response = await this.fetchFn(url, {
-      method: 'GET',
-      headers: {
-        Accept: 'text/html,application/xhtml+xml'
-      }
-    });
-
-    if (!response.ok) {
-      throw new ImdbPublicProviderError(
-        'http_error',
-        `IMDb title request failed with HTTP ${response.status}`,
-        response.status
-      );
-    }
-
-    const rating = parseImdbAggregateRating(await response.text());
+    const rating = findRatingRow(await this.loadDataset(), candidate.providerId);
     if (!rating) {
-      throw new ImdbPublicProviderError('rating_unavailable', 'IMDb title page contains no usable rating');
+      throw new ImdbPublicProviderError(
+        'rating_unavailable',
+        'IMDb ratings dataset contains no usable rating for this title'
+      );
     }
 
     return {
@@ -222,7 +223,7 @@ export class ImdbPublicRatingsProvider {
       value: rating.value,
       scale: 10,
       voteCount: rating.voteCount,
-      url
+      url: `https://www.imdb.com/title/${candidate.providerId}/`
     };
   }
 }
