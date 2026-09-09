@@ -25,12 +25,10 @@ describe('Chrome extension manifest', () => {
     ]);
   });
 
-  it('requires no extension permissions and only tokenless IMDb data hosts', () => {
+  it('requires no extension permissions and only the zero-token Wikidata host', () => {
     expect(manifest.permissions ?? []).toEqual([]);
-    expect(manifest.host_permissions).toEqual([
-      'https://v3.sg.media-imdb.com/*',
-      'https://datasets.imdbws.com/*'
-    ]);
+    expect(manifest.host_permissions).toEqual(['https://www.wikidata.org/*']);
+    expect(JSON.stringify(manifest)).not.toContain('imdb');
   });
 
   it('does not expose developer bootstrap or web-accessible resources in the source manifest', () => {
