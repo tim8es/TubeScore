@@ -6,25 +6,27 @@ import { chromium } from 'playwright';
 const DIST = resolve('dist');
 const OUT = resolve('manual-regression-artifacts');
 const CASES = [
-  {
-    id: 'Mzw2ttJD2qQ',
-    expectedTitle: /The Odyssey/i,
-    screenshot: '01-the-odyssey.png'
-  },
-  {
-    id: 'AMLCbpM1fRQ',
-    expectedTitle: /Onslaught/i,
-    screenshot: '02-onslaught.png'
-  }
+  { id: 'Mzw2ttJD2qQ', expectedTitle: /The Odyssey/i, screenshot: '01-the-odyssey.png' },
+  { id: 'AMLCbpM1fRQ', expectedTitle: /Onslaught/i, screenshot: '02-onslaught.png' }
 ];
-
-const report = { status: 'running', browser: null, cases: [] };
+const report = { status: 'running', browser: null, cases: [], wikidataProbe: null };
 const logs = [];
 
 function log(event, data = {}) {
   const line = { at: new Date().toISOString(), event, ...data };
   logs.push(line);
   console.log(JSON.stringify(line));
+}
+
+async function wikidataSearch(params) {
+  const url = new URL('https://www.wikidata.org/w/api.php');
+  for (const [key, value] of Object.entries(params)) url.searchParams.set(key, value);
+  url.searchParams.set('format', 'json');
+  url.searchParams.set('origin', '*');
+  const response = await fetch(url, {
+    headers: { 'Api-User-Agent': 'TubeScore/0.1 regression diagnostic' }
+  });
+  return { url: url.toString(), status: response.status, payload: await response.json() };
 }
 
 async function dismissConsent(page) {
@@ -46,13 +48,29 @@ async function waitWatch(page, id) {
   }, id, { timeout: 70000 });
 }
 
-async function overlay(page) {
+async function pageMetadata(page) {
+  return page.evaluate(() => {
+    const text = (selectors) => {
+      for (const selector of selectors) {
+        const value = document.querySelector(selector)?.textContent?.trim();
+        if (value) return value;
+      }
+      return '';
+    };
+    return {
+      title: text(['h1.ytd-watch-metadata yt-formatted-string', 'h1 yt-formatted-string', 'meta[name="title"]']),
+      description: text(['#description-inline-expander', '#description', 'ytd-text-inline-expander']).slice(0, 1500),
+      channel: text(['ytd-channel-name #text a', '#owner #channel-name a', '#channel-name a'])
+    };
+  });
+}
+
+async function overlay(page, timeout = 30000) {
   await page.waitForFunction(() => {
     const card = document.querySelector('.tubescore-card');
     const state = card?.getAttribute('data-tubescore-state');
     return Boolean(card && ['high', 'likely', 'error'].includes(state ?? ''));
-  }, null, { timeout: 150000 });
-
+  }, null, { timeout });
   return page.locator('.tubescore-card').first().evaluate((card) => ({
     state: card.getAttribute('data-tubescore-state'),
     text: card.textContent?.replace(/\s+/g, ' ').trim() ?? '',
@@ -67,45 +85,40 @@ async function launch(profile) {
     args: [
       `--disable-extensions-except=${DIST}`,
       `--load-extension=${DIST}`,
-      '--no-first-run',
-      '--disable-default-apps',
-      '--disable-sync',
-      '--disable-features=Translate'
+      '--no-first-run', '--disable-default-apps', '--disable-sync', '--disable-features=Translate'
     ]
   });
 }
 
 await mkdir(OUT, { recursive: true });
+report.wikidataProbe = {
+  title: await wikidataSearch({ action: 'wbsearchentities', search: 'onslaught', language: 'en', uselang: 'en', type: 'item', limit: '10' }),
+  titleYear: await wikidataSearch({ action: 'wbsearchentities', search: 'onslaught 2026', language: 'en', uselang: 'en', type: 'item', limit: '10' }),
+  videoId: await wikidataSearch({ action: 'query', list: 'search', srsearch: 'haswbstatement:P1651=AMLCbpM1fRQ', srlimit: '10' })
+};
+log('wikidata_probe', report.wikidataProbe);
+
 const root = await mkdtemp(join(tmpdir(), 'tubescore-manual-regression-'));
 const context = await launch(join(root, 'profile'));
 report.browser = context.browser()?.version() ?? 'unknown';
-
 try {
   const page = context.pages()[0] ?? await context.newPage();
-
   for (const testCase of CASES) {
     const url = `https://www.youtube.com/watch?v=${testCase.id}&hl=en&gl=US`;
     await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 });
     await dismissConsent(page);
     await waitWatch(page, testCase.id);
+    const metadata = await pageMetadata(page);
+    log('page_metadata', { id: testCase.id, ...metadata });
     const card = await overlay(page);
-    const entry = { id: testCase.id, url: page.url(), ...card };
+    const entry = { id: testCase.id, url: page.url(), metadata, ...card };
     report.cases.push(entry);
     log('case_overlay', entry);
-
-    if (!['high', 'likely'].includes(card.state ?? '')) {
-      throw new Error(`unexpected_state:${testCase.id}:${card.state}:${card.text}`);
-    }
-    if (!testCase.expectedTitle.test(card.text)) {
-      throw new Error(`wrong_title:${testCase.id}:${card.text}`);
-    }
-    if (card.count !== 1) {
-      throw new Error(`wrong_card_count:${testCase.id}:${card.count}`);
-    }
-
+    if (!['high', 'likely'].includes(card.state ?? '')) throw new Error(`unexpected_state:${testCase.id}:${card.state}:${card.text}`);
+    if (!testCase.expectedTitle.test(card.text)) throw new Error(`wrong_title:${testCase.id}:${card.text}`);
+    if (card.count !== 1) throw new Error(`wrong_card_count:${testCase.id}:${card.count}`);
     await page.screenshot({ path: join(OUT, testCase.screenshot), fullPage: false });
   }
-
   report.status = 'pass';
   log('manual_regression_gate_pass');
 } catch (error) {
