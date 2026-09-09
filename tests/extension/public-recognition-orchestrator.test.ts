@@ -77,8 +77,8 @@ describe('zero-config production recognition orchestrator', () => {
     }
   });
 
-  it('does not load ratings when the catalog match is hidden', async () => {
-    const fetchFn = vi.fn(async () => jsonResponse({
+  it('does not load ratings when all catalog matches remain hidden', async () => {
+    const fetchFn = vi.fn(async (_input: RequestInfo | URL) => jsonResponse({
       search: [{ id: 'Q1', label: 'Completely Different Film', description: '1900 film' }]
     }));
 
@@ -87,7 +87,11 @@ describe('zero-config production recognition orchestrator', () => {
 
     expect(result?.decision.state).toBe('hidden');
     expect(result?.ratings).toEqual([]);
-    expect(fetchFn).toHaveBeenCalledOnce();
+    expect(fetchFn).toHaveBeenCalled();
+    for (const [input] of fetchFn.mock.calls) {
+      const url = new URL(String(input));
+      expect(url.searchParams.get('action')).toBe('wbsearchentities');
+    }
   });
 
   it('returns null when Wikidata search has no movie or TV candidates', async () => {
