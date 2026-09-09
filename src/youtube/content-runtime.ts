@@ -125,8 +125,9 @@ export class YouTubeContentRuntime {
 
   private isCurrentRequest(runId: number, videoId: string): boolean {
     if (!this.started || runId !== this.generation) return false;
-    const current = extractYouTubeVideoContext(this.document, this.window.location);
-    return current?.videoId === videoId;
+    if (this.window.location.pathname !== '/watch') return false;
+    const currentVideoId = new URLSearchParams(this.window.location.search).get('v')?.trim();
+    return currentVideoId === videoId;
   }
 
   private mountCard(card: HTMLElement): void {
