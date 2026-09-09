@@ -18,6 +18,10 @@ function jsonResponse(payload: unknown): Response {
   });
 }
 
+function exactIdMiss(): Response {
+  return jsonResponse({ query: { search: [] } });
+}
+
 describe('zero-config production recognition orchestrator', () => {
   it('uses exact Wikidata P1651 YouTube-ID lookup before title search', async () => {
     const calls: string[] = [];
@@ -61,6 +65,7 @@ describe('zero-config production recognition orchestrator', () => {
     const fetchFn = vi.fn(async (input: RequestInfo | URL, _init?: RequestInit) => {
       const url = new URL(String(input));
       const action = url.searchParams.get('action');
+      if (action === 'query') return exactIdMiss();
       if (action === 'wbsearchentities') {
         return jsonResponse({
           search: [{ id: 'Q109228991', label: 'Dune: Part Two', description: '2024 film directed by Denis Villeneuve' }]
@@ -107,7 +112,7 @@ describe('zero-config production recognition orchestrator', () => {
       scale: 100,
       url: 'https://www.wikidata.org/wiki/Q109228991'
     }]);
-    expect(fetchFn).toHaveBeenCalledTimes(3);
+    expect(fetchFn).toHaveBeenCalledTimes(4);
     for (const [, init] of fetchFn.mock.calls) {
       const headers = new Headers(init?.headers);
       expect(headers.has('authorization')).toBe(false);
@@ -116,9 +121,13 @@ describe('zero-config production recognition orchestrator', () => {
   });
 
   it('does not load ratings when all catalog matches remain hidden', async () => {
-    const fetchFn = vi.fn(async (_input: RequestInfo | URL) => jsonResponse({
-      search: [{ id: 'Q1', label: 'Completely Different Film', description: '1900 film' }]
-    }));
+    const fetchFn = vi.fn(async (input: RequestInfo | URL) => {
+      const url = new URL(String(input));
+      if (url.searchParams.get('action') === 'query') return exactIdMiss();
+      return jsonResponse({
+        search: [{ id: 'Q1', label: 'Completely Different Film', description: '1900 film' }]
+      });
+    });
 
     const recognize = createPublicRecognitionOrchestrator({ fetchFn });
     const result = await recognize(context);
@@ -126,23 +135,25 @@ describe('zero-config production recognition orchestrator', () => {
     expect(result?.decision.state).toBe('hidden');
     expect(result?.ratings).toEqual([]);
     expect(fetchFn).toHaveBeenCalled();
-    for (const [input] of fetchFn.mock.calls) {
-      const url = new URL(String(input));
-      expect(url.searchParams.get('action')).toBe('wbsearchentities');
-    }
+    const actions = fetchFn.mock.calls.map(([input]) => new URL(String(input)).searchParams.get('action'));
+    expect(actions[0]).toBe('query');
+    expect(actions.slice(1).every((action) => action === 'wbsearchentities')).toBe(true);
   });
 
   it('returns null when Wikidata search has no movie or TV candidates', async () => {
-    const fetchFn = vi.fn(async (_input: RequestInfo | URL) => jsonResponse({
-      search: [{ id: 'Q42', label: 'Douglas Adams', description: 'English author and humorist' }]
-    }));
+    const fetchFn = vi.fn(async (input: RequestInfo | URL) => {
+      const url = new URL(String(input));
+      if (url.searchParams.get('action') === 'query') return exactIdMiss();
+      return jsonResponse({
+        search: [{ id: 'Q42', label: 'Douglas Adams', description: 'English author and humorist' }]
+      });
+    });
 
     const recognize = createPublicRecognitionOrchestrator({ fetchFn });
     await expect(recognize(context)).resolves.toBeNull();
     expect(fetchFn).toHaveBeenCalled();
-    for (const [input] of fetchFn.mock.calls) {
-      const url = new URL(String(input));
-      expect(url.searchParams.get('action')).toBe('wbsearchentities');
-    }
+    const actions = fetchFn.mock.calls.map(([input]) => new URL(String(input)).searchParams.get('action'));
+    expect(actions[0]).toBe('query');
+    expect(actions.slice(1).every((action) => action === 'wbsearchentities')).toBe(true);
   });
 });
