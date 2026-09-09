@@ -28,6 +28,14 @@ function bestScore(
   return best;
 }
 
+function withExactYouTubeIdEvidence(score: MatchScore): MatchScore {
+  return {
+    ...score,
+    confidence: Math.max(score.confidence, 0.95),
+    reasons: [...new Set([...score.reasons, 'youtube-video-id-match'])]
+  };
+}
+
 export function createPublicRecognitionOrchestrator(
   options: PublicRecognitionOrchestratorOptions = {}
 ): (context: YouTubeVideoContext) => Promise<RecognitionResult | null> {
@@ -57,11 +65,7 @@ export function createPublicRecognitionOrchestrator(
 
     const exactScore = bestScore(context, await catalog.searchByYouTubeVideoId(context.videoId));
     if (exactScore) {
-      const exactDecision = decideMatch(exactScore);
-      if (exactDecision.state !== 'hidden') {
-        return resultForVisibleScore(exactScore);
-      }
-      bestHidden = exactScore;
+      return resultForVisibleScore(withExactYouTubeIdEvidence(exactScore));
     }
 
     for (const query of buildSearchQueries(context)) {

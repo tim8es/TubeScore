@@ -8,7 +8,8 @@ const OUT = resolve('manual-regression-artifacts');
 const CASES = [
   { id: 'Mzw2ttJD2qQ', expectedTitle: /The Odyssey/i, screenshot: '01-the-odyssey.png', requireRating: true },
   { id: 'AMLCbpM1fRQ', expectedTitle: /Onslaught/i, screenshot: '02-onslaught.png', requireRating: false },
-  { id: 'Way9Dexny3w', expectedTitle: /Dune: Part Two/i, screenshot: '03-dune-part-two.png', requireRating: true }
+  { id: 'Way9Dexny3w', expectedTitle: /Dune: Part Two/i, screenshot: '03-dune-part-two.png', requireRating: true },
+  { id: '8yh9BPUBbbQ', expectedTitle: /^.*F1.*$/i, screenshot: '04-f1-the-movie.png', requireRating: true }
 ];
 const report = { status: 'running', browser: null, cases: [], providerError: null };
 const logs = [];
@@ -131,7 +132,7 @@ async function runProviderError(root) {
     if (!/Unavailable|Ratings could not be loaded/i.test(card.text)) throw new Error(`provider_error_copy:${card.text}`);
     if (/tubescore_release_smoke|internal_failure/i.test(card.text)) throw new Error(`provider_error_leak:${card.text}`);
     if (card.count !== 1) throw new Error(`provider_error_count:${card.count}`);
-    await page.screenshot({ path: join(OUT, '04-provider-error.png'), fullPage: false });
+    await page.screenshot({ path: join(OUT, '05-provider-error.png'), fullPage: false });
   } finally {
     await context.close();
   }
