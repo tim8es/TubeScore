@@ -58,18 +58,19 @@ export class YouTubeContentRuntime {
     const root = this.document.documentElement;
     if (!root) return;
 
-    const Observer = this.window.MutationObserver;
+    const Observer = this.document.defaultView?.MutationObserver ?? globalThis.MutationObserver;
     if (!Observer) return;
 
-    this.metadataObserver = new Observer(() => {
+    const observer = new Observer(() => {
       if (!this.started) return;
       this.scheduleRecognition();
     });
-    this.metadataObserver.observe(root, {
+    observer.observe(root, {
       childList: true,
       subtree: true,
       characterData: true
     });
+    this.metadataObserver = observer;
   }
 
   private disarmMetadataObserver(): void {
