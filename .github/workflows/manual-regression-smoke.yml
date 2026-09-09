@@ -1,0 +1,42 @@
+name: Manual Regression Smoke
+
+on:
+  push:
+    branches:
+      - fix/manual-test-matching
+    paths:
+      - 'src/**'
+      - 'manifest.json'
+      - 'scripts/build.mjs'
+      - 'scripts/manual-user-regression-smoke.mjs'
+      - '.github/workflows/manual-regression-smoke.yml'
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install project dependencies
+        run: npm install --no-audit --no-fund
+      - name: Install Playwright Chromium for smoke only
+        run: |
+          npm install --no-save --no-audit --no-fund playwright@1.55.0
+          npx playwright install --with-deps chromium
+      - name: Build unpacked extension
+        run: npm run build
+      - name: Run reported YouTube regression gate
+        run: xvfb-run -a node scripts/manual-user-regression-smoke.mjs
+      - name: Upload regression evidence and installable build
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: manual-regression-evidence-${{ github.sha }}
+          path: |
+            manual-regression-artifacts/
+            dist/
+          if-no-files-found: warn
+          retention-days: 14
