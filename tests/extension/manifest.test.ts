@@ -25,9 +25,12 @@ describe('Chrome extension manifest', () => {
     ]);
   });
 
-  it('uses only local storage permission and TMDB host access', () => {
-    expect(manifest.permissions).toEqual(['storage']);
-    expect(manifest.host_permissions).toEqual(['https://api.themoviedb.org/*']);
+  it('requires no extension permissions and only tokenless IMDb host access', () => {
+    expect(manifest.permissions ?? []).toEqual([]);
+    expect(manifest.host_permissions).toEqual([
+      'https://v3.sg.media-imdb.com/*',
+      'https://www.imdb.com/*'
+    ]);
   });
 
   it('does not expose developer bootstrap or web-accessible resources in the source manifest', () => {
