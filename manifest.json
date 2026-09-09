@@ -13,7 +13,6 @@
     }
   ],
   "host_permissions": [
-    "https://v3.sg.media-imdb.com/*",
-    "https://datasets.imdbws.com/*"
+    "https://www.wikidata.org/*"
   ]
 }
