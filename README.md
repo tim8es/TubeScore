@@ -1,78 +1,131 @@
 # TubeScore
 
-TubeScore is a Chrome/Chromium Manifest V3 extension that identifies movies or TV series referenced by YouTube videos and renders rating information near the YouTube metadata area.
+TubeScore is a Chrome/Chromium Manifest V3 extension that identifies movies or TV series referenced by YouTube videos and renders an IMDb rating near the YouTube metadata area.
+
+## Runtime model
+
+The standard extension is zero-config:
+
+- no API key or token;
+- no extension options page;
+- no `chrome.storage` permission;
+- no backend or deployed proxy required;
+- no account setup after installation.
+
+Recognition uses YouTube page metadata plus deterministic scoring. Catalog candidates come from IMDb's public autocomplete endpoint. Ratings come from IMDb's public `title.ratings.tsv.gz` dataset. The ratings dataset is fetched with the browser HTTP cache enabled and memoized in the service worker while it is alive.
+
+TMDB code retained in the repository is an optional legacy/fallback path and is not imported by the standard service-worker bundle.
 
 ## Current scope
 
-- YouTube watch pages with SPA navigation support.
-- Deterministic metadata-based recognition.
-- TMDB catalog lookup and TMDB rating retrieval.
+- YouTube `/watch` pages with SPA navigation support.
+- Trailers, teasers, clips, and reviews when the title can be identified confidently from page metadata.
+- IMDb catalog matching and IMDb aggregate rating display.
+- High/likely/hidden confidence decisions; false negatives are preferred over confident false positives.
+- Generic non-blocking error state when a public data source is unavailable.
 - No LLM, computer vision, audio fingerprinting, subtitle analysis, or remote YouTube-history collection.
-- No embedded API credentials.
 
 ## Requirements
 
 - Node.js 22.
 - npm.
-- Chrome/Chromium with Manifest V3 support.
+- Chrome/Chromium with Manifest V3 and `DecompressionStream` support. The build targets Chrome 120+.
 
-## Verify the repository
+## Verify
 
 ```bash
 npm install --no-audit --no-fund
-npm run typecheck
-npm test
-npm run verify:build
-npm run verify:build:dev
+npm run verify
 ```
 
-`verify:build` checks the standard unpacked build. `verify:build:dev` checks the local developer build and confirms the developer bootstrap stays isolated from the standard build.
+`npm run verify` performs:
 
-## Standard unpacked build
+1. strict TypeScript typecheck;
+2. the full Vitest suite;
+3. a clean production build;
+4. build-isolation checks proving the standard service worker contains no TMDB token/runtime-config/storage dependency and does contain the public IMDb providers.
+
+## Build and install as an unpacked extension
 
 ```bash
 npm run build
 ```
 
-The resulting `dist/` contains the Manifest V3 service worker and YouTube content script. The standard build intentionally contains no developer options page and no TMDB token.
+Then:
 
-The current standard build is safe to inspect/load, but it is not a functional end-user release until a production credential-provisioning strategy is implemented. Do not embed a TMDB token in the bundle to bypass that gate.
+1. Open `chrome://extensions`.
+2. Enable **Developer mode**.
+3. Choose **Load unpacked**.
+4. Select this repository's generated `dist/` directory.
+5. Open a YouTube watch page for a recognizable movie or TV trailer/review.
 
-## Local developer build
+No additional TubeScore configuration is required.
 
-Use this only when you already possess a concrete TMDB API read token locally:
+The generated directory contains:
 
-```bash
-npm run build:dev
+```text
+dist/
+  manifest.json
+  content-script.js
+  service-worker.js
 ```
 
-Then load `dist/` as an unpacked extension in a local Chrome profile, open the extension Options page, save the token locally, and run preflight before visiting a YouTube watch page.
+## Network/data flow
 
-The token is stored only in `chrome.storage.local` under `tubescoreRuntimeConfig`. It is not accepted through build arguments or environment variables and must not be committed, pasted into documentation, or printed to logs.
+```text
+YouTube watch page
+  -> content-script metadata extraction
+  -> chrome.runtime message
+  -> service worker
+  -> IMDb public autocomplete
+  -> deterministic candidate scorer / match decision
+  -> IMDb public ratings dataset
+  -> TubeScore rating card
+```
 
-Detailed instructions: `docs/development/local-tmdb-bootstrap.md`.
+The extension never sends a TubeScore API credential because the standard runtime has no credential.
 
-## Safe behavior without configuration
-
-Without a local runtime token, preflight returns `safe-unconfigured` and performs no TMDB network request. Recognition remains unconfigured rather than attempting anonymous or malformed requests.
-
-Provider/runtime failures on an active watch page render a generic `TubeScore · Unavailable` state. Internal exception text and credential material are not rendered into the page.
+On the first rating lookup after a cold service-worker start, Chrome may need to retrieve/decompress the IMDb ratings dataset. The request uses `cache: force-cache`; subsequent lookups in the same worker reuse the decompressed dataset in memory, and later worker starts can reuse the browser's HTTP cache.
 
 ## Permissions
 
-The source manifest requests only:
+TubeScore requests no extension permissions such as `storage`, `tabs`, `history`, or `cookies`.
 
-- `storage` — runtime configuration/cache seam.
-- `https://api.themoviedb.org/*` host access — TMDB background requests.
-- `https://www.youtube.com/*` content-script match — required to survive YouTube SPA transitions into and between watch pages.
+Host access is limited to:
 
-No developer options page or web-accessible resource is declared in the standard source manifest.
+- `https://v3.sg.media-imdb.com/*` — public IMDb title autocomplete;
+- `https://datasets.imdbws.com/*` — public IMDb ratings dataset.
 
-## Release gate
+The content script is matched only on `https://www.youtube.com/*`; this broad path is required because YouTube performs SPA navigation between watch pages without full page reloads.
 
-Before an end-user release, TubeScore still requires both:
+## Error behavior
 
-1. A production-safe TMDB credential-provisioning strategy that does not ship a reusable secret in the extension bundle (for example, a controlled backend/proxy or another explicitly approved browser-safe model).
-2. A real browser smoke test with a concrete authorized TMDB token/configuration, covering install → preflight → YouTube recognition → rating render → SPA navigation → provider-error UX.
+A provider/network failure for the active video renders a generic:
 
-Until those gates are satisfied, do not publish to the Chrome Web Store.
+```text
+TubeScore · Unavailable
+Ratings could not be loaded.
+```
+
+Internal exception details are not rendered. Existing navigation generation guards prevent a stale result/error from an old video overwriting the current page.
+
+## Data-source constraints
+
+The IMDb autocomplete endpoint used for candidate discovery is public but undocumented and can change independently of TubeScore. Provider failures therefore remain fail-safe and non-blocking.
+
+IMDb publishes its downloadable datasets for non-commercial use under its dataset terms. Before commercial distribution or Chrome Web Store monetization, review the applicable IMDb licensing/usage terms for the intended use. This is a distribution/legal gate, not a runtime credential requirement.
+
+## Release verification still requiring a real browser
+
+CI verifies the code, message boundary, providers, recognition decisions, manifest, and generated bundle. It does not emulate Chrome's unpacked-extension lifecycle or current live YouTube DOM/network behavior.
+
+Before calling a build fully browser-verified, run an unpacked Chrome smoke test covering:
+
+- extension load and service-worker startup;
+- a recognizable YouTube watch page;
+- IMDb rating render;
+- YouTube SPA navigation to another video;
+- no-match behavior;
+- provider-error UI.
+
+That smoke test requires **no token, secret, account, backend, or proxy**.
