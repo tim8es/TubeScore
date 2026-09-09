@@ -134,6 +134,48 @@ describe('manual YouTube regression cases', () => {
     expect(result?.decision.score.candidate.providerId).toBe('Q109228991');
   });
 
+  it('continues past a hidden older title when a later query finds the correct year', async () => {
+    const seenQueries: string[] = [];
+    const fetchFn = vi.fn(async (input: RequestInfo | URL) => {
+      const url = new URL(String(input));
+      const action = url.searchParams.get('action');
+      if (action === 'wbsearchentities') {
+        const query = url.searchParams.get('search') ?? '';
+        seenQueries.push(query);
+        if (query === 'onslaught') {
+          return jsonResponse({
+            search: [{ id: 'Q100', label: 'Onslaught', description: '2016 film' }]
+          });
+        }
+        if (query === 'onslaught 2026') {
+          return jsonResponse({
+            search: [{ id: 'Q200', label: 'Onslaught', description: '2026 film directed by Adam Wingard' }]
+          });
+        }
+        return jsonResponse({ search: [] });
+      }
+      if (action === 'wbgetentities' && url.searchParams.get('ids') === 'Q200') {
+        return jsonResponse({
+          entities: {
+            Q200: {
+              id: 'Q200',
+              claims: {
+                P444: [{ rank: 'preferred', mainsnak: { datavalue: { value: '72/100' } } }]
+              }
+            }
+          }
+        });
+      }
+      throw new Error(`unexpected_url:${url}`);
+    });
+
+    const result = await createPublicRecognitionOrchestrator({ fetchFn })(onslaught);
+
+    expect(seenQueries).toContain('onslaught 2026');
+    expect(result?.decision.state).toBe('high');
+    expect(result?.decision.score.candidate.providerId).toBe('Q200');
+  });
+
   it('renders a recognized title with no P444 as no-rating rather than a provider error', async () => {
     const fetchFn = vi.fn(async (input: RequestInfo | URL) => {
       const url = new URL(String(input));
