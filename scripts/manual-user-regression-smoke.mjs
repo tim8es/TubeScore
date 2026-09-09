@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { chromium } from 'playwright';
@@ -6,27 +6,17 @@ import { chromium } from 'playwright';
 const DIST = resolve('dist');
 const OUT = resolve('manual-regression-artifacts');
 const CASES = [
-  { id: 'Mzw2ttJD2qQ', expectedTitle: /The Odyssey/i, screenshot: '01-the-odyssey.png' },
-  { id: 'AMLCbpM1fRQ', expectedTitle: /Onslaught/i, screenshot: '02-onslaught.png' }
+  { id: 'Mzw2ttJD2qQ', expectedTitle: /The Odyssey/i, screenshot: '01-the-odyssey.png', forbidUnavailable: true },
+  { id: 'AMLCbpM1fRQ', expectedTitle: /Onslaught/i, screenshot: '02-onslaught.png', forbidUnavailable: true },
+  { id: 'Way9Dexny3w', expectedTitle: /Dune: Part Two/i, screenshot: '03-dune-regression.png', forbidUnavailable: false }
 ];
-const report = { status: 'running', browser: null, cases: [], wikidataProbe: null };
+const report = { status: 'running', browser: null, cases: [], providerError: null };
 const logs = [];
 
 function log(event, data = {}) {
   const line = { at: new Date().toISOString(), event, ...data };
   logs.push(line);
   console.log(JSON.stringify(line));
-}
-
-async function wikidataSearch(params) {
-  const url = new URL('https://www.wikidata.org/w/api.php');
-  for (const [key, value] of Object.entries(params)) url.searchParams.set(key, value);
-  url.searchParams.set('format', 'json');
-  url.searchParams.set('origin', '*');
-  const response = await fetch(url, {
-    headers: { 'Api-User-Agent': 'TubeScore/0.1 regression diagnostic' }
-  });
-  return { url: url.toString(), status: response.status, payload: await response.json() };
 }
 
 async function dismissConsent(page) {
@@ -48,24 +38,7 @@ async function waitWatch(page, id) {
   }, id, { timeout: 70000 });
 }
 
-async function pageMetadata(page) {
-  return page.evaluate(() => {
-    const text = (selectors) => {
-      for (const selector of selectors) {
-        const value = document.querySelector(selector)?.textContent?.trim();
-        if (value) return value;
-      }
-      return '';
-    };
-    return {
-      title: text(['h1.ytd-watch-metadata yt-formatted-string', 'h1 yt-formatted-string', 'meta[name="title"]']),
-      description: text(['#description-inline-expander', '#description', 'ytd-text-inline-expander']).slice(0, 1500),
-      channel: text(['ytd-channel-name #text a', '#owner #channel-name a', '#channel-name a'])
-    };
-  });
-}
-
-async function overlay(page, timeout = 30000) {
+async function overlay(page, timeout = 120000) {
   await page.waitForFunction(() => {
     const card = document.querySelector('.tubescore-card');
     const state = card?.getAttribute('data-tubescore-state');
@@ -78,47 +51,85 @@ async function overlay(page, timeout = 30000) {
   }));
 }
 
-async function launch(profile) {
+async function launch(extensionDir, profile) {
   return chromium.launchPersistentContext(profile, {
     headless: false,
     viewport: { width: 1440, height: 1100 },
     args: [
-      `--disable-extensions-except=${DIST}`,
-      `--load-extension=${DIST}`,
-      '--no-first-run', '--disable-default-apps', '--disable-sync', '--disable-features=Translate'
+      `--disable-extensions-except=${extensionDir}`,
+      `--load-extension=${extensionDir}`,
+      '--no-first-run',
+      '--disable-default-apps',
+      '--disable-sync',
+      '--disable-features=Translate'
     ]
   });
 }
 
-await mkdir(OUT, { recursive: true });
-report.wikidataProbe = {
-  title: await wikidataSearch({ action: 'wbsearchentities', search: 'onslaught', language: 'en', uselang: 'en', type: 'item', limit: '10' }),
-  titleYear: await wikidataSearch({ action: 'wbsearchentities', search: 'onslaught 2026', language: 'en', uselang: 'en', type: 'item', limit: '10' }),
-  videoId: await wikidataSearch({ action: 'query', list: 'search', srsearch: 'haswbstatement:P1651=AMLCbpM1fRQ', srlimit: '10' })
-};
-log('wikidata_probe', report.wikidataProbe);
+async function runSuccessCases(root) {
+  const context = await launch(DIST, join(root, 'success-profile'));
+  report.browser = context.browser()?.version() ?? 'unknown';
+  try {
+    const page = context.pages()[0] ?? await context.newPage();
+    for (const testCase of CASES) {
+      await page.goto(`https://www.youtube.com/watch?v=${testCase.id}&hl=en&gl=US`, { waitUntil: 'domcontentloaded', timeout: 60000 });
+      await dismissConsent(page);
+      await waitWatch(page, testCase.id);
+      const card = await overlay(page);
+      const entry = { id: testCase.id, url: page.url(), ...card };
+      report.cases.push(entry);
+      log('case_overlay', entry);
 
-const root = await mkdtemp(join(tmpdir(), 'tubescore-manual-regression-'));
-const context = await launch(join(root, 'profile'));
-report.browser = context.browser()?.version() ?? 'unknown';
-try {
-  const page = context.pages()[0] ?? await context.newPage();
-  for (const testCase of CASES) {
-    const url = `https://www.youtube.com/watch?v=${testCase.id}&hl=en&gl=US`;
-    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 });
-    await dismissConsent(page);
-    await waitWatch(page, testCase.id);
-    const metadata = await pageMetadata(page);
-    log('page_metadata', { id: testCase.id, ...metadata });
-    const card = await overlay(page);
-    const entry = { id: testCase.id, url: page.url(), metadata, ...card };
-    report.cases.push(entry);
-    log('case_overlay', entry);
-    if (!['high', 'likely'].includes(card.state ?? '')) throw new Error(`unexpected_state:${testCase.id}:${card.state}:${card.text}`);
-    if (!testCase.expectedTitle.test(card.text)) throw new Error(`wrong_title:${testCase.id}:${card.text}`);
-    if (card.count !== 1) throw new Error(`wrong_card_count:${testCase.id}:${card.count}`);
-    await page.screenshot({ path: join(OUT, testCase.screenshot), fullPage: false });
+      if (!['high', 'likely'].includes(card.state ?? '')) throw new Error(`unexpected_state:${testCase.id}:${card.state}:${card.text}`);
+      if (!testCase.expectedTitle.test(card.text)) throw new Error(`wrong_title:${testCase.id}:${card.text}`);
+      if (card.count !== 1) throw new Error(`wrong_card_count:${testCase.id}:${card.count}`);
+      if (testCase.forbidUnavailable && /Unavailable|Ratings could not be loaded/i.test(card.text)) {
+        throw new Error(`unexpected_unavailable:${testCase.id}:${card.text}`);
+      }
+      await page.screenshot({ path: join(OUT, testCase.screenshot), fullPage: false });
+    }
+  } finally {
+    await context.close();
   }
+}
+
+async function makeFaultDist(root) {
+  const dir = join(root, 'fault-dist');
+  await cp(DIST, dir, { recursive: true });
+  const workerPath = join(dir, 'service-worker.js');
+  const worker = await readFile(workerPath, 'utf8');
+  const prelude = `const __tsRealFetch = globalThis.fetch.bind(globalThis);\nglobalThis.fetch = (input, init) => {\n  const url = String(input);\n  if (url.includes('www.wikidata.org/w/api.php')) return Promise.reject(new Error('tubescore_manual_smoke_internal_failure'));\n  return __tsRealFetch(input, init);\n};\n`;
+  await writeFile(workerPath, prelude + worker);
+  return dir;
+}
+
+async function runProviderError(root) {
+  const faultDist = await makeFaultDist(root);
+  const context = await launch(faultDist, join(root, 'error-profile'));
+  try {
+    const page = context.pages()[0] ?? await context.newPage();
+    const id = 'Way9Dexny3w';
+    await page.goto(`https://www.youtube.com/watch?v=${id}&hl=en&gl=US`, { waitUntil: 'domcontentloaded', timeout: 60000 });
+    await dismissConsent(page);
+    await waitWatch(page, id);
+    const card = await overlay(page, 90000);
+    report.providerError = card;
+    log('provider_error_overlay', card);
+    if (card.state !== 'error') throw new Error(`provider_error_state:${card.state}:${card.text}`);
+    if (!/Unavailable|Ratings could not be loaded/i.test(card.text)) throw new Error(`provider_error_copy:${card.text}`);
+    if (/tubescore_manual_smoke|internal_failure/i.test(card.text)) throw new Error(`provider_error_leak:${card.text}`);
+    if (card.count !== 1) throw new Error(`provider_error_count:${card.count}`);
+    await page.screenshot({ path: join(OUT, '04-provider-error.png'), fullPage: false });
+  } finally {
+    await context.close();
+  }
+}
+
+await mkdir(OUT, { recursive: true });
+const root = await mkdtemp(join(tmpdir(), 'tubescore-manual-regression-'));
+try {
+  await runSuccessCases(root);
+  await runProviderError(root);
   report.status = 'pass';
   log('manual_regression_gate_pass');
 } catch (error) {
@@ -129,6 +140,5 @@ try {
 } finally {
   await writeFile(join(OUT, 'manual-regression.json'), `${JSON.stringify(report, null, 2)}\n`);
   await writeFile(join(OUT, 'manual-regression.log'), `${logs.map((line) => JSON.stringify(line)).join('\n')}\n`);
-  await context.close();
   await rm(root, { recursive: true, force: true }).catch(() => undefined);
 }
