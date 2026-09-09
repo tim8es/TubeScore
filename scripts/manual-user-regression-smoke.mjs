@@ -10,7 +10,7 @@ const CASES = [
   { id: 'AMLCbpM1fRQ', expectedTitle: /Onslaught/i, screenshot: '02-onslaught.png', forbidUnavailable: true },
   { id: 'Way9Dexny3w', expectedTitle: /Dune: Part Two/i, screenshot: '03-dune-regression.png', forbidUnavailable: false }
 ];
-const report = { status: 'running', browser: null, cases: [], providerError: null };
+const report = { status: 'running', browser: null, cases: [], providerError: null, duneWorkerDiagnostic: null };
 const logs = [];
 
 function log(event, data = {}) {
@@ -75,12 +75,33 @@ async function launch(extensionDir, profile) {
     args: [
       `--disable-extensions-except=${extensionDir}`,
       `--load-extension=${extensionDir}`,
-      '--no-first-run',
-      '--disable-default-apps',
-      '--disable-sync',
-      '--disable-features=Translate'
+      '--no-first-run', '--disable-default-apps', '--disable-sync', '--disable-features=Translate'
     ]
   });
+}
+
+async function workerDiagnostic(context, videoId, titleQuery) {
+  let worker = context.serviceWorkers().find((item) => item.url().startsWith('chrome-extension://'));
+  if (!worker) {
+    worker = await context.waitForEvent('serviceworker', {
+      predicate: (item) => item.url().startsWith('chrome-extension://'),
+      timeout: 15000
+    });
+  }
+  return worker.evaluate(async ({ videoId, titleQuery }) => {
+    const load = async (params) => {
+      const url = new URL('https://www.wikidata.org/w/api.php');
+      for (const [key, value] of Object.entries(params)) url.searchParams.set(key, value);
+      url.searchParams.set('format', 'json');
+      url.searchParams.set('origin', '*');
+      const response = await fetch(url, { cache: 'no-store', headers: { 'Api-User-Agent': 'TubeScore/0.1 regression worker trace' } });
+      return { status: response.status, payload: await response.json() };
+    };
+    return {
+      exact: await load({ action: 'query', list: 'search', srsearch: `haswbstatement:P1651=${videoId}`, srlimit: '10' }),
+      title: await load({ action: 'wbsearchentities', search: titleQuery, language: 'en', uselang: 'en', type: 'item', limit: '10' })
+    };
+  }, { videoId, titleQuery });
 }
 
 async function runSuccessCases(root) {
@@ -94,17 +115,18 @@ async function runSuccessCases(root) {
       await waitWatch(page, testCase.id);
       const metadata = await pageMetadata(page);
       log('case_metadata', { id: testCase.id, metadata });
-      const card = await overlay(page);
+      if (testCase.id === 'Way9Dexny3w') {
+        report.duneWorkerDiagnostic = await workerDiagnostic(context, testCase.id, 'dune part two');
+        log('dune_worker_diagnostic', report.duneWorkerDiagnostic);
+      }
+      const card = await overlay(page, testCase.id === 'Way9Dexny3w' ? 30000 : 120000);
       const entry = { id: testCase.id, url: page.url(), metadata, ...card };
       report.cases.push(entry);
       log('case_overlay', entry);
-
       if (!['high', 'likely'].includes(card.state ?? '')) throw new Error(`unexpected_state:${testCase.id}:${card.state}:${card.text}`);
       if (!testCase.expectedTitle.test(card.text)) throw new Error(`wrong_title:${testCase.id}:${card.text}`);
       if (card.count !== 1) throw new Error(`wrong_card_count:${testCase.id}:${card.count}`);
-      if (testCase.forbidUnavailable && /Unavailable|Ratings could not be loaded/i.test(card.text)) {
-        throw new Error(`unexpected_unavailable:${testCase.id}:${card.text}`);
-      }
+      if (testCase.forbidUnavailable && /Unavailable|Ratings could not be loaded/i.test(card.text)) throw new Error(`unexpected_unavailable:${testCase.id}:${card.text}`);
       await page.screenshot({ path: join(OUT, testCase.screenshot), fullPage: false });
     } finally {
       await context.close();
