@@ -1,10 +1,9 @@
-import { normalizeYouTubeTitle } from './normalize';
+import {
+  extractFourDigitYear,
+  normalizeYouTubeTitle,
+  primaryYouTubeTitle
+} from './normalize';
 import type { CatalogCandidate, MatchScore, YouTubeVideoContext } from './types';
-
-function extractYear(value: string): number | undefined {
-  const match = value.match(/\b(19\d{2}|20\d{2}|21\d{2})\b/);
-  return match ? Number(match[1]) : undefined;
-}
 
 function withoutYear(value: string): string {
   return value.replace(/\b(19\d{2}|20\d{2}|21\d{2})\b/g, ' ').replace(/\s+/g, ' ').trim();
@@ -31,8 +30,8 @@ export function scoreCandidate(
   context: YouTubeVideoContext,
   candidate: CatalogCandidate
 ): MatchScore {
-  const normalizedContext = normalizeYouTubeTitle(context.title);
-  const contextYear = extractYear(normalizedContext);
+  const normalizedContext = primaryYouTubeTitle(context.title);
+  const contextYear = extractFourDigitYear(context.title) ?? extractFourDigitYear(context.description);
   const contextTitle = withoutYear(normalizedContext);
   const candidateTitle = withoutYear(normalizeYouTubeTitle(candidate.title));
   const originalTitle = candidate.originalTitle
