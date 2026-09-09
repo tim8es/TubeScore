@@ -77,6 +77,33 @@ describe('YouTubeContentRuntime', () => {
     runtime.stop();
   });
 
+  it('recognizes when watch metadata appears after runtime startup without a navigation event', async () => {
+    history.pushState({}, '', 'https://www.youtube.com/watch?v=late');
+    document.body.innerHTML = '<main><div id="above-the-fold"></div></main>';
+    const recognize = vi.fn(async (context: YouTubeVideoContext) => resultFor(context.title));
+    const runtime = new YouTubeContentRuntime({ recognize });
+
+    runtime.start();
+    await runtime.whenIdle();
+    expect(recognize).not.toHaveBeenCalled();
+
+    document.querySelector('main')?.insertAdjacentHTML('afterbegin', `
+      <h1 class="ytd-watch-metadata"><yt-formatted-string>Dune: Part Two | Official Trailer</yt-formatted-string></h1>
+      <div id="description-inline-expander">A new sci-fi trailer. #Dune</div>
+      <ytd-channel-name><div id="text"><a>Warner Bros. Pictures</a></div></ytd-channel-name>
+    `);
+
+    await vi.waitFor(() => {
+      expect(recognize).toHaveBeenCalledOnce();
+    });
+    await runtime.whenIdle();
+
+    expect(recognize.mock.calls[0]![0].videoId).toBe('late');
+    expect(document.querySelector('.tubescore-card__title')?.textContent).toContain('Dune: Part Two');
+
+    runtime.stop();
+  });
+
   it('detects YouTube SPA navigation and recognizes the new video metadata', async () => {
     setWatchPage('first', 'First Movie | Official Trailer');
     const recognize = vi.fn(async (context: YouTubeVideoContext) => resultFor(context.title));
