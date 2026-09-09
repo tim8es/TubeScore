@@ -3,16 +3,15 @@ import { decideMatch } from '../core/match-decision';
 import { buildSearchQueries } from '../core/query-builder';
 import type { CatalogCandidate, MatchScore, RecognitionResult, YouTubeVideoContext } from '../core/types';
 import {
-  ImdbPublicCatalogProvider,
-  ImdbPublicRatingsProvider
-} from '../providers/imdb/imdb-public-provider';
+  WikidataPublicCatalogProvider,
+  WikidataPublicRatingsProvider
+} from '../providers/wikidata/wikidata-public-provider';
 
 type FetchFn = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 
 export interface PublicRecognitionOrchestratorOptions {
   fetchFn?: FetchFn;
-  suggestionBaseUrl?: string;
-  ratingsDatasetUrl?: string;
+  apiBaseUrl?: string;
 }
 
 function bestScore(
@@ -22,9 +21,7 @@ function bestScore(
   let best: MatchScore | null = null;
   for (const candidate of candidates) {
     const score = scoreCandidate(context, candidate);
-    if (best === null || score.confidence > best.confidence) {
-      best = score;
-    }
+    if (best === null || score.confidence > best.confidence) best = score;
   }
   return best;
 }
@@ -32,14 +29,12 @@ function bestScore(
 export function createPublicRecognitionOrchestrator(
   options: PublicRecognitionOrchestratorOptions = {}
 ): (context: YouTubeVideoContext) => Promise<RecognitionResult | null> {
-  const catalog = new ImdbPublicCatalogProvider({
+  const providerOptions = {
     ...(options.fetchFn ? { fetchFn: options.fetchFn } : {}),
-    ...(options.suggestionBaseUrl ? { suggestionBaseUrl: options.suggestionBaseUrl } : {})
-  });
-  const ratings = new ImdbPublicRatingsProvider({
-    ...(options.fetchFn ? { fetchFn: options.fetchFn } : {}),
-    ...(options.ratingsDatasetUrl ? { ratingsDatasetUrl: options.ratingsDatasetUrl } : {})
-  });
+    ...(options.apiBaseUrl ? { apiBaseUrl: options.apiBaseUrl } : {})
+  };
+  const catalog = new WikidataPublicCatalogProvider(providerOptions);
+  const ratings = new WikidataPublicRatingsProvider(providerOptions);
 
   return async (context) => {
     const [query] = buildSearchQueries(context);
@@ -50,14 +45,9 @@ export function createPublicRecognitionOrchestrator(
     if (!score) return null;
 
     const decision = decideMatch(score);
-    if (decision.state === 'hidden') {
-      return { decision, ratings: [] };
-    }
+    if (decision.state === 'hidden') return { decision, ratings: [] };
 
     const rating = await ratings.getRating(score.candidate);
-    return {
-      decision,
-      ratings: [rating]
-    };
+    return { decision, ratings: [rating] };
   };
 }
