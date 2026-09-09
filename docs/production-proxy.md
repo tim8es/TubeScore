@@ -4,13 +4,13 @@
 
 This architecture is retained as an optional fallback/reference. It is **not used by the current standard TubeScore service worker** and is not required to build, install, test, or run the extension.
 
-The active standard runtime is zero-config and uses public IMDb data:
+The active standard runtime is zero-config and uses Wikidata:
 
 ```text
 YouTube
-  -> IMDb public autocomplete
+  -> Wikidata wbsearchentities
   -> deterministic scorer / decision
-  -> IMDb public ratings dataset
+  -> Wikidata wbgetentities / P444 review score
   -> TubeScore card
 ```
 
@@ -18,7 +18,7 @@ No TMDB token, deployed backend, proxy URL, or runtime storage is required by th
 
 ## Why this code remains
 
-Earlier slices implemented a secure alternative for any future provider that requires a server-side credential. Keeping it in the repository preserves a reviewed example of how TubeScore can isolate a reusable secret from the extension bundle without weakening the active zero-config path.
+Earlier slices implemented a secure alternative for a future provider that requires a server-side credential. Keeping it in the repository preserves a reviewed example of how TubeScore can isolate a reusable secret from the extension bundle without weakening the active zero-token path.
 
 The optional architecture is:
 
@@ -41,7 +41,7 @@ Repository pieces:
 - `src/extension/proxy-recognition-orchestrator.ts`
 - proxy/provider/orchestrator tests
 
-These files are not reachable from `src/extension/service-worker.ts`, and the production build verifier fails if the bundled service worker contains `tmdbAccessToken`, `api.themoviedb.org`, `tubescoreRuntimeConfig`, or `chrome.storage`.
+These files are not reachable from `src/extension/service-worker.ts`. Production build verification rejects bundled `tmdbAccessToken`, `api.themoviedb.org`, `tubescoreRuntimeConfig`, `chrome.storage`, and the legacy IMDb production endpoints.
 
 ## Security contract if the fallback is ever activated
 
@@ -54,4 +54,4 @@ Allowed proxy operations are limited to:
 
 The proxy validates query/path parameters, rejects arbitrary TMDB passthrough, normalizes upstream failures, and fails closed when server runtime configuration is missing.
 
-Any future activation would require external deployment state such as a server-side TMDB token and abuse/rate controls. Those are prerequisites only for this optional fallback, **not release gates for the current zero-config IMDb build**.
+Any future activation would require external deployment state such as a server-side TMDB token and abuse/rate controls. Those are prerequisites only for this optional fallback, **not release gates for the current zero-token Wikidata build**.
