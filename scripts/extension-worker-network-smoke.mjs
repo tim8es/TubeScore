@@ -48,7 +48,8 @@ try {
       workerUrl: self.location.href,
       decompressionStreamType: typeof DecompressionStream,
       suggestion: null,
-      dataset: null
+      dataset: null,
+      productionRecognition: null
     };
 
     try {
@@ -115,6 +116,22 @@ try {
       output.dataset = { error: String(error) };
     }
 
+    try {
+      output.productionRecognition = await chrome.runtime.sendMessage({
+        type: 'tubescore:recognize',
+        context: {
+          videoId: 'smoke-dune',
+          title: 'Dune: Part Two | Official Trailer (2024)',
+          description: 'Dune: Part Two official trailer',
+          channelName: 'Warner Bros. Pictures',
+          hashtags: ['DunePartTwo'],
+          url: 'https://www.youtube.com/watch?v=smoke-dune'
+        }
+      });
+    } catch (error) {
+      output.productionRecognition = { transportError: String(error) };
+    }
+
     return output;
   }, { suggestionUrl: SUGGESTION_URL, datasetUrl: DATASET_URL });
 
@@ -122,7 +139,9 @@ try {
     && diagnostic.suggestion?.dune?.id === 'tt15239678'
     && diagnostic.dataset?.status === 200
     && typeof diagnostic.dataset?.duneRow === 'string'
-    && diagnostic.dataset.duneRow.startsWith('tt15239678\t');
+    && diagnostic.dataset.duneRow.startsWith('tt15239678\t')
+    && diagnostic.productionRecognition?.ok === true
+    && diagnostic.productionRecognition?.result?.ratings?.[0]?.source === 'IMDb';
 
   result = {
     status: pass ? 'pass' : 'fail',
