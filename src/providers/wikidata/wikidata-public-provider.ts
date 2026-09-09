@@ -15,7 +15,7 @@ export class WikidataProviderError extends Error {
     super(code, options.cause === undefined ? undefined : { cause: options.cause });
     this.name = 'WikidataProviderError';
     this.code = code;
-    this.status = options.status;
+    if (options.status !== undefined) this.status = options.status;
   }
 }
 
