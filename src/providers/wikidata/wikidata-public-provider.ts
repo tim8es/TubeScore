@@ -401,9 +401,10 @@ export class WikidataPublicCatalogProvider {
     if (!isRecord(entityPayload) || !isRecord(entityPayload.entities)) {
       throw new WikidataProviderError('invalid_response');
     }
+    const entities = entityPayload.entities;
 
     return uniqueIds
-      .map((id) => entityCandidate(entityPayload.entities[id], id))
+      .map((id) => entityCandidate(entities[id], id))
       .filter((candidate): candidate is CatalogCandidate => candidate !== null);
   }
 }
