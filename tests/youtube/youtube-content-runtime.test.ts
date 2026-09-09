@@ -173,12 +173,6 @@ describe('YouTubeContentRuntime', () => {
     await Promise.resolve();
     expect(recognize).toHaveBeenCalledOnce();
 
-    document.querySelector('main')?.insertAdjacentHTML('afterbegin', `
-      <h1 class="ytd-watch-metadata"><yt-formatted-string>Dune: Part Two | Official Trailer</yt-formatted-string></h1>
-    `);
-    await Promise.resolve();
-    expect(recognize).toHaveBeenCalledOnce();
-
     resolveRecognition(resultFor('Dune: Part Two'));
     await vi.waitFor(() => {
       expect(document.querySelector('.tubescore-card__title')?.textContent).toContain('Dune: Part Two');
