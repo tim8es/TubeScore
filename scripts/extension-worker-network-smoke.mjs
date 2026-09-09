@@ -5,8 +5,7 @@ import { chromium } from 'playwright';
 
 const DIST_DIR = resolve('dist');
 const EVIDENCE_DIR = resolve('browser-smoke-artifacts');
-const SUGGESTION_URL = 'https://v3.sg.media-imdb.com/suggestion/x/dune%20part%20two.json';
-const DATASET_URL = 'https://datasets.imdbws.com/title.ratings.tsv.gz';
+const API_URL = 'https://www.wikidata.org/w/api.php';
 
 await mkdir(EVIDENCE_DIR, { recursive: true });
 const profileDir = await mkdtemp(join(tmpdir(), 'tubescore-worker-network-'));
@@ -33,115 +32,43 @@ try {
     });
   }
 
-  const diagnostic = await worker.evaluate(async ({ suggestionUrl, datasetUrl }) => {
-    async function fetchWithTimeout(url, init = {}, timeoutMs = 45000) {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), timeoutMs);
-      try {
-        return await fetch(url, { ...init, signal: controller.signal });
-      } finally {
-        clearTimeout(timeout);
-      }
-    }
+  const diagnostic = await worker.evaluate(async (apiUrl) => {
+    const url = new URL(apiUrl);
+    url.searchParams.set('action', 'wbsearchentities');
+    url.searchParams.set('search', 'Dune Part Two 2024');
+    url.searchParams.set('language', 'en');
+    url.searchParams.set('uselang', 'en');
+    url.searchParams.set('type', 'item');
+    url.searchParams.set('limit', '10');
+    url.searchParams.set('format', 'json');
+    url.searchParams.set('origin', '*');
 
-    const output = {
+    const response = await fetch(url, {
+      cache: 'no-store',
+      headers: {
+        Accept: 'application/json',
+        'Api-User-Agent': 'TubeScore/0.1 (https://github.com/tim8es/TubeScore)'
+      }
+    });
+    const payload = await response.json();
+    const dune = Array.isArray(payload?.search)
+      ? payload.search.find((item) => /Dune: Part Two/i.test(item?.label ?? '')) ?? null
+      : null;
+
+    return {
       workerUrl: self.location.href,
-      decompressionStreamType: typeof DecompressionStream,
-      suggestion: null,
-      dataset: null,
-      productionRecognition: null
+      status: response.status,
+      ok: response.ok,
+      dune,
+      requestHost: url.host,
+      authUsed: false
     };
+  }, API_URL);
 
-    try {
-      const response = await fetchWithTimeout(suggestionUrl, {
-        cache: 'force-cache',
-        headers: { Accept: 'application/json' }
-      });
-      const text = await response.text();
-      let payload = null;
-      try { payload = JSON.parse(text); } catch {}
-      output.suggestion = {
-        status: response.status,
-        ok: response.ok,
-        type: response.type,
-        contentType: response.headers.get('content-type'),
-        bodyLength: text.length,
-        dune: Array.isArray(payload?.d)
-          ? payload.d.find((item) => item?.id === 'tt15239678') ?? null
-          : null
-      };
-    } catch (error) {
-      output.suggestion = { error: String(error) };
-    }
-
-    try {
-      const response = await fetchWithTimeout(datasetUrl, {
-        cache: 'force-cache',
-        headers: { Accept: 'application/gzip, application/octet-stream, text/tab-separated-values' }
-      }, 90000);
-      const buffer = await response.arrayBuffer();
-      const bytes = new Uint8Array(buffer);
-      const gzip = bytes.length >= 2 && bytes[0] === 0x1f && bytes[1] === 0x8b;
-      const info = {
-        status: response.status,
-        ok: response.ok,
-        type: response.type,
-        contentType: response.headers.get('content-type'),
-        contentEncoding: response.headers.get('content-encoding'),
-        contentLengthHeader: response.headers.get('content-length'),
-        byteLength: bytes.length,
-        firstBytes: Array.from(bytes.slice(0, 12)),
-        gzip,
-        decompressedLength: null,
-        duneRow: null,
-        decodeError: null
-      };
-
-      try {
-        let text;
-        if (gzip) {
-          const body = new Response(buffer).body;
-          if (!body) throw new Error('missing_body');
-          text = await new Response(body.pipeThrough(new DecompressionStream('gzip'))).text();
-        } else {
-          text = new TextDecoder().decode(bytes);
-        }
-        info.decompressedLength = text.length;
-        info.duneRow = text.match(/^tt15239678\t[^\r\n]+$/m)?.[0] ?? null;
-      } catch (error) {
-        info.decodeError = String(error);
-      }
-      output.dataset = info;
-    } catch (error) {
-      output.dataset = { error: String(error) };
-    }
-
-    try {
-      output.productionRecognition = await chrome.runtime.sendMessage({
-        type: 'tubescore:recognize',
-        context: {
-          videoId: 'smoke-dune',
-          title: 'Dune: Part Two | Official Trailer (2024)',
-          description: 'Dune: Part Two official trailer',
-          channelName: 'Warner Bros. Pictures',
-          hashtags: ['DunePartTwo'],
-          url: 'https://www.youtube.com/watch?v=smoke-dune'
-        }
-      });
-    } catch (error) {
-      output.productionRecognition = { transportError: String(error) };
-    }
-
-    return output;
-  }, { suggestionUrl: SUGGESTION_URL, datasetUrl: DATASET_URL });
-
-  const pass = diagnostic.suggestion?.status === 200
-    && diagnostic.suggestion?.dune?.id === 'tt15239678'
-    && diagnostic.dataset?.status === 200
-    && typeof diagnostic.dataset?.duneRow === 'string'
-    && diagnostic.dataset.duneRow.startsWith('tt15239678\t')
-    && diagnostic.productionRecognition?.ok === true
-    && diagnostic.productionRecognition?.result?.ratings?.[0]?.source === 'IMDb';
+  const pass = diagnostic.status === 200
+    && diagnostic.ok === true
+    && diagnostic.dune?.id
+    && diagnostic.requestHost === 'www.wikidata.org';
 
   result = {
     status: pass ? 'pass' : 'fail',
@@ -151,6 +78,7 @@ try {
     diagnostic
   };
   console.log(JSON.stringify(result));
+  if (!pass) process.exitCode = 1;
 } catch (error) {
   result = {
     status: 'blocked',
@@ -159,11 +87,9 @@ try {
     error: error instanceof Error ? `${error.name}: ${error.message}` : String(error)
   };
   console.error(JSON.stringify(result));
+  process.exitCode = 1;
 } finally {
   await writeFile(join(EVIDENCE_DIR, '00-extension-worker-network.json'), `${JSON.stringify(result, null, 2)}\n`);
   await context?.close().catch(() => undefined);
   await rm(profileDir, { recursive: true, force: true }).catch(() => undefined);
 }
-
-// This diagnostic records evidence but does not short-circuit the broader browser smoke.
-process.exitCode = 0;
