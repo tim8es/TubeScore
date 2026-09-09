@@ -25,11 +25,11 @@ describe('Chrome extension manifest', () => {
     ]);
   });
 
-  it('requires no extension permissions and only tokenless IMDb host access', () => {
+  it('requires no extension permissions and only tokenless IMDb data hosts', () => {
     expect(manifest.permissions ?? []).toEqual([]);
     expect(manifest.host_permissions).toEqual([
       'https://v3.sg.media-imdb.com/*',
-      'https://www.imdb.com/*'
+      'https://datasets.imdbws.com/*'
     ]);
   });
 
