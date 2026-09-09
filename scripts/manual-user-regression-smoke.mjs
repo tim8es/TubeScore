@@ -38,6 +38,23 @@ async function waitWatch(page, id) {
   }, id, { timeout: 70000 });
 }
 
+async function pageMetadata(page) {
+  return page.evaluate(() => {
+    const pick = (selectors) => {
+      for (const selector of selectors) {
+        const value = document.querySelector(selector)?.textContent?.trim();
+        if (value) return value;
+      }
+      return '';
+    };
+    return {
+      title: pick(['h1.ytd-watch-metadata yt-formatted-string', 'h1 yt-formatted-string', 'meta[name="title"]']),
+      description: pick(['#description-inline-expander', '#description', 'ytd-text-inline-expander']).slice(0, 600),
+      channel: pick(['ytd-channel-name #text a', '#owner #channel-name a', '#channel-name a'])
+    };
+  });
+}
+
 async function overlay(page, timeout = 120000) {
   await page.waitForFunction(() => {
     const card = document.querySelector('.tubescore-card');
@@ -67,16 +84,18 @@ async function launch(extensionDir, profile) {
 }
 
 async function runSuccessCases(root) {
-  const context = await launch(DIST, join(root, 'success-profile'));
-  report.browser = context.browser()?.version() ?? 'unknown';
-  try {
-    const page = context.pages()[0] ?? await context.newPage();
-    for (const testCase of CASES) {
+  for (const [index, testCase] of CASES.entries()) {
+    const context = await launch(DIST, join(root, `success-profile-${index}`));
+    report.browser ??= context.browser()?.version() ?? 'unknown';
+    try {
+      const page = context.pages()[0] ?? await context.newPage();
       await page.goto(`https://www.youtube.com/watch?v=${testCase.id}&hl=en&gl=US`, { waitUntil: 'domcontentloaded', timeout: 60000 });
       await dismissConsent(page);
       await waitWatch(page, testCase.id);
+      const metadata = await pageMetadata(page);
+      log('case_metadata', { id: testCase.id, metadata });
       const card = await overlay(page);
-      const entry = { id: testCase.id, url: page.url(), ...card };
+      const entry = { id: testCase.id, url: page.url(), metadata, ...card };
       report.cases.push(entry);
       log('case_overlay', entry);
 
@@ -87,9 +106,9 @@ async function runSuccessCases(root) {
         throw new Error(`unexpected_unavailable:${testCase.id}:${card.text}`);
       }
       await page.screenshot({ path: join(OUT, testCase.screenshot), fullPage: false });
+    } finally {
+      await context.close();
     }
-  } finally {
-    await context.close();
   }
 }
 
