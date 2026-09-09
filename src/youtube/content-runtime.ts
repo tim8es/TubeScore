@@ -81,12 +81,21 @@ export class YouTubeContentRuntime {
   private scheduleRecognition(): void {
     const context = extractYouTubeVideoContext(this.document, this.window.location);
     if (!context) {
-      this.generation += 1;
-      this.removeCard();
-      if (this.window.location.pathname !== '/watch') {
+      if (this.window.location.pathname === '/watch') {
+        const urlVideoId = new URLSearchParams(this.window.location.search).get('v')?.trim() ?? null;
+        if (urlVideoId && urlVideoId === this.lastVideoId) {
+          return;
+        }
+        if (urlVideoId !== this.lastVideoId) {
+          this.lastVideoId = null;
+        }
+      } else {
         this.lastVideoId = null;
         this.disarmMetadataObserver();
       }
+
+      this.generation += 1;
+      this.removeCard();
       this.currentTask = Promise.resolve();
       return;
     }
