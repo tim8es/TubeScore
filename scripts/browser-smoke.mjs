@@ -116,6 +116,100 @@ function attachWorkerEvidence(context, name) {
   return workers;
 }
 
+async function getExtensionWorker(context, timeout = 15000) {
+  const existing = context.serviceWorkers().find((worker) => worker.url().startsWith('chrome-extension://'));
+  if (existing) return existing;
+  return context.waitForEvent('serviceworker', {
+    predicate: (worker) => worker.url().startsWith('chrome-extension://'),
+    timeout
+  });
+}
+
+async function diagnoseExtensionWorker(context) {
+  const worker = await getExtensionWorker(context).catch(() => null);
+  if (!worker) return { error: 'extension_worker_missing' };
+
+  return worker.evaluate(async ({ suggestionUrl, datasetUrl }) => {
+    const output = {
+      workerUrl: self.location.href,
+      decompressionStreamType: typeof DecompressionStream,
+      suggestion: null,
+      dataset: null
+    };
+
+    try {
+      const response = await fetch(suggestionUrl, {
+        method: 'GET',
+        cache: 'no-store',
+        headers: { Accept: 'application/json' }
+      });
+      const text = await response.text();
+      let payload = null;
+      try { payload = JSON.parse(text); } catch {}
+      output.suggestion = {
+        status: response.status,
+        ok: response.ok,
+        type: response.type,
+        contentType: response.headers.get('content-type'),
+        bodyPrefix: text.slice(0, 120),
+        dune: Array.isArray(payload?.d)
+          ? payload.d.find((item) => item?.id === 'tt15239678') ?? null
+          : null
+      };
+    } catch (error) {
+      output.suggestion = { error: String(error) };
+    }
+
+    try {
+      const response = await fetch(datasetUrl, {
+        method: 'GET',
+        cache: 'no-store',
+        headers: { Accept: 'application/gzip, application/octet-stream, text/tab-separated-values' }
+      });
+      const buffer = await response.arrayBuffer();
+      const bytes = new Uint8Array(buffer);
+      const gzip = bytes.length >= 2 && bytes[0] === 0x1f && bytes[1] === 0x8b;
+      const info = {
+        status: response.status,
+        ok: response.ok,
+        type: response.type,
+        contentType: response.headers.get('content-type'),
+        contentEncoding: response.headers.get('content-encoding'),
+        contentLengthHeader: response.headers.get('content-length'),
+        byteLength: bytes.length,
+        firstBytes: Array.from(bytes.slice(0, 12)),
+        gzip,
+        decompressedLength: null,
+        duneRow: null,
+        decodeError: null
+      };
+
+      try {
+        let text;
+        if (gzip) {
+          const body = new Response(buffer).body;
+          if (!body) throw new Error('missing_body');
+          text = await new Response(body.pipeThrough(new DecompressionStream('gzip'))).text();
+        } else {
+          text = new TextDecoder().decode(bytes);
+        }
+        info.decompressedLength = text.length;
+        info.duneRow = text.match(/^tt15239678\t[^\r\n]+$/m)?.[0] ?? null;
+      } catch (error) {
+        info.decodeError = String(error);
+      }
+      output.dataset = info;
+    } catch (error) {
+      output.dataset = { error: String(error) };
+    }
+
+    return output;
+  }, {
+    suggestionUrl: 'https://v3.sg.media-imdb.com/suggestion/x/dune%20part%20two.json',
+    datasetUrl: RATINGS_DATASET_URL
+  });
+}
+
 async function launchExtensionContext(extensionDir, profileDir, name) {
   log(`${name}_launch_start`, { extensionDir, profileDir });
   const context = await chromium.launchPersistentContext(profileDir, {
@@ -182,7 +276,12 @@ async function runLiveExtensionSmoke(tempRoot) {
     const firstOverlay = await readOverlay(page);
     report.live.firstOverlay = firstOverlay;
     log('first_overlay', firstOverlay);
-    if (!['high', 'likely'].includes(firstOverlay.state ?? '')) throw new Error(`unexpected_first_overlay_state:${firstOverlay.state}`);
+    if (!['high', 'likely'].includes(firstOverlay.state ?? '')) {
+      const diagnostics = await diagnoseExtensionWorker(context);
+      report.live.extensionWorkerDiagnostics = diagnostics;
+      log('extension_worker_diagnostics', diagnostics);
+      throw new Error(`unexpected_first_overlay_state:${firstOverlay.state}`);
+    }
     if (!/IMDb\s+\d+(?:\.\d+)?\/10/.test(firstOverlay.text)) throw new Error(`first_overlay_missing_imdb_rating:${firstOverlay.text}`);
     if (!/Dune: Part Two/i.test(firstOverlay.text)) throw new Error(`first_overlay_wrong_title:${firstOverlay.text}`);
     if (firstOverlay.count !== 1) throw new Error(`first_overlay_duplicate_count:${firstOverlay.count}`);
