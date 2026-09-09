@@ -38,4 +38,26 @@ describe('scoreCandidate', () => {
     expect(score.confidence).toBeLessThan(0.75);
     expect(score.reasons).toContain('year-mismatch');
   });
+
+  it('matches the candidate release year when a historical year appears earlier in the description', () => {
+    const realDuneContext: YouTubeVideoContext = {
+      videoId: 'Way9Dexny3w',
+      title: 'Dune: Part Two | Official Trailer',
+      description: 'The follow-up to 2021’s Dune. In theaters March 15, 2024 worldwide.',
+      channelName: 'Warner Bros.',
+      hashtags: ['DunePartTwo'],
+      url: 'https://www.youtube.com/watch?v=Way9Dexny3w'
+    };
+
+    const score = scoreCandidate(realDuneContext, {
+      providerId: 'Q109228991',
+      mediaType: 'movie',
+      title: 'Dune: Part Two',
+      releaseYear: 2024
+    });
+
+    expect(score.confidence).toBeGreaterThanOrEqual(0.9);
+    expect(score.reasons).toContain('year-match');
+    expect(score.reasons).not.toContain('year-mismatch');
+  });
 });
