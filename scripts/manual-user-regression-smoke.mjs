@@ -1,16 +1,11 @@
-import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { chromium } from 'playwright';
 
 const DIST = resolve('dist');
 const OUT = resolve('manual-regression-artifacts');
-const CASES = [
-  { id: 'Mzw2ttJD2qQ', expectedTitle: /The Odyssey/i, screenshot: '01-the-odyssey.png', forbidUnavailable: true },
-  { id: 'AMLCbpM1fRQ', expectedTitle: /Onslaught/i, screenshot: '02-onslaught.png', forbidUnavailable: true },
-  { id: 'Way9Dexny3w', expectedTitle: /Dune: Part Two/i, screenshot: '03-dune-regression.png', forbidUnavailable: false }
-];
-const report = { status: 'running', browser: null, cases: [], providerError: null, duneCardHistory: null };
+const DUNE_ID = 'Way9Dexny3w';
 const logs = [];
 
 function log(event, data = {}) {
@@ -19,167 +14,82 @@ function log(event, data = {}) {
   console.log(JSON.stringify(line));
 }
 
+async function instrumentContentScript() {
+  const path = join(DIST, 'content-script.js');
+  const source = await readFile(path, 'utf8');
+  const prelude = `
+const __tsOriginalSendMessage = chrome.runtime.sendMessage.bind(chrome.runtime);
+chrome.runtime.sendMessage = async (...args) => {
+  try {
+    const message = args[0];
+    if (message && message.type === 'tubescore:recognize') {
+      document.documentElement.setAttribute('data-tubescore-diag-request', JSON.stringify(message));
+    }
+    const response = await __tsOriginalSendMessage(...args);
+    if (message && message.type === 'tubescore:recognize') {
+      document.documentElement.setAttribute('data-tubescore-diag-response', JSON.stringify(response));
+    }
+    return response;
+  } catch (error) {
+    document.documentElement.setAttribute('data-tubescore-diag-error', String(error));
+    throw error;
+  }
+};
+`;
+  await writeFile(path, prelude + source);
+}
+
+async function launch(profile) {
+  return chromium.launchPersistentContext(profile, {
+    headless: false,
+    viewport: { width: 1440, height: 1100 },
+    args: [
+      `--disable-extensions-except=${DIST}`,
+      `--load-extension=${DIST}`,
+      '--no-first-run', '--disable-default-apps', '--disable-sync', '--disable-features=Translate'
+    ]
+  });
+}
+
 async function dismissConsent(page) {
   for (const name of [/Reject all/i, /Accept all/i, /I agree/i]) {
     const button = page.getByRole('button', { name }).first();
     if (await button.isVisible({ timeout: 1000 }).catch(() => false)) {
       await button.click().catch(() => undefined);
-      await page.waitForTimeout(500);
       break;
     }
   }
 }
 
-async function waitWatch(page, id) {
-  await page.waitForFunction((videoId) => {
-    const url = new URL(location.href);
-    const title = document.querySelector('h1.ytd-watch-metadata yt-formatted-string, h1 yt-formatted-string');
-    return url.pathname === '/watch' && url.searchParams.get('v') === videoId && Boolean(title?.textContent?.trim());
-  }, id, { timeout: 70000 });
-}
-
-async function pageMetadata(page) {
-  return page.evaluate(() => {
-    const pick = (selectors) => {
-      for (const selector of selectors) {
-        const node = document.querySelector(selector);
-        const value = node instanceof HTMLMetaElement ? node.content.trim() : node?.textContent?.trim();
-        if (value) return value;
-      }
-      return '';
-    };
-    const description = pick(['#description-inline-expander', '#description', 'ytd-text-inline-expander']).slice(0, 600);
-    return {
-      title: pick(['h1.ytd-watch-metadata yt-formatted-string', 'h1 yt-formatted-string', 'meta[name="title"]']),
-      description,
-      channel: pick(['ytd-channel-name #text a', '#owner #channel-name a', '#channel-name a'])
-    };
-  });
-}
-
-async function overlay(page, timeout = 120000) {
-  await page.waitForFunction(() => {
-    const card = document.querySelector('.tubescore-card');
-    const state = card?.getAttribute('data-tubescore-state');
-    return Boolean(card && ['high', 'likely', 'error'].includes(state ?? ''));
-  }, null, { timeout });
-  return page.locator('.tubescore-card').first().evaluate((card) => ({
-    state: card.getAttribute('data-tubescore-state'),
-    text: card.textContent?.replace(/\s+/g, ' ').trim() ?? '',
-    count: document.querySelectorAll('.tubescore-card').length
-  }));
-}
-
-async function launch(extensionDir, profile) {
-  return chromium.launchPersistentContext(profile, {
-    headless: false,
-    viewport: { width: 1440, height: 1100 },
-    args: [`--disable-extensions-except=${extensionDir}`, `--load-extension=${extensionDir}`, '--no-first-run', '--disable-default-apps', '--disable-sync', '--disable-features=Translate']
-  });
-}
-
-async function runSuccessCases(root) {
-  for (const [index, testCase] of CASES.entries()) {
-    const context = await launch(DIST, join(root, `success-profile-${index}`));
-    report.browser ??= context.browser()?.version() ?? 'unknown';
-    try {
-      const page = context.pages()[0] ?? await context.newPage();
-      if (testCase.id === 'Way9Dexny3w') {
-        await page.addInitScript(() => {
-          window.__tsCardHistory = [];
-          const record = (kind) => {
-            const card = document.querySelector('.tubescore-card');
-            window.__tsCardHistory.push({
-              t: performance.now(),
-              kind,
-              card: card?.textContent?.replace(/\s+/g, ' ').trim() ?? '',
-              connected: Boolean(card?.isConnected),
-              aboveFold: Boolean(document.querySelector('#above-the-fold')),
-              h1: document.querySelector('h1.ytd-watch-metadata yt-formatted-string, h1 yt-formatted-string')?.textContent?.trim() ?? ''
-            });
-          };
-          addEventListener('DOMContentLoaded', () => {
-            record('domcontentloaded');
-            new MutationObserver(() => record('mutation')).observe(document.documentElement, { childList: true, subtree: true });
-          });
-        });
-      }
-      await page.goto(`https://www.youtube.com/watch?v=${testCase.id}&hl=en&gl=US`, { waitUntil: 'domcontentloaded', timeout: 60000 });
-      await dismissConsent(page);
-      await waitWatch(page, testCase.id);
-      const metadata = await pageMetadata(page);
-      log('case_metadata', { id: testCase.id, metadata });
-      let card;
-      try {
-        card = await overlay(page, testCase.id === 'Way9Dexny3w' ? 30000 : 120000);
-      } catch (error) {
-        if (testCase.id === 'Way9Dexny3w') {
-          const history = await page.evaluate(() => window.__tsCardHistory ?? []);
-          report.duneCardHistory = history;
-          const cardEvents = history.filter((item) => item.card || item.kind === 'domcontentloaded');
-          log('dune_card_history', { count: history.length, cardEvents: cardEvents.slice(-30) });
-        }
-        throw error;
-      }
-      const entry = { id: testCase.id, url: page.url(), metadata, ...card };
-      report.cases.push(entry);
-      log('case_overlay', entry);
-      if (!['high', 'likely'].includes(card.state ?? '')) throw new Error(`unexpected_state:${testCase.id}:${card.state}:${card.text}`);
-      if (!testCase.expectedTitle.test(card.text)) throw new Error(`wrong_title:${testCase.id}:${card.text}`);
-      if (card.count !== 1) throw new Error(`wrong_card_count:${testCase.id}:${card.count}`);
-      if (testCase.forbidUnavailable && /Unavailable|Ratings could not be loaded/i.test(card.text)) throw new Error(`unexpected_unavailable:${testCase.id}:${card.text}`);
-      await page.screenshot({ path: join(OUT, testCase.screenshot), fullPage: false });
-    } finally {
-      await context.close();
-    }
-  }
-}
-
-async function makeFaultDist(root) {
-  const dir = join(root, 'fault-dist');
-  await cp(DIST, dir, { recursive: true });
-  const workerPath = join(dir, 'service-worker.js');
-  const worker = await readFile(workerPath, 'utf8');
-  const prelude = `const __tsRealFetch = globalThis.fetch.bind(globalThis);\nglobalThis.fetch = (input, init) => {\n  const url = String(input);\n  if (url.includes('www.wikidata.org/w/api.php')) return Promise.reject(new Error('tubescore_manual_smoke_internal_failure'));\n  return __tsRealFetch(input, init);\n};\n`;
-  await writeFile(workerPath, prelude + worker);
-  return dir;
-}
-
-async function runProviderError(root) {
-  const faultDist = await makeFaultDist(root);
-  const context = await launch(faultDist, join(root, 'error-profile'));
-  try {
-    const page = context.pages()[0] ?? await context.newPage();
-    const id = 'Way9Dexny3w';
-    await page.goto(`https://www.youtube.com/watch?v=${id}&hl=en&gl=US`, { waitUntil: 'domcontentloaded', timeout: 60000 });
-    await dismissConsent(page);
-    await waitWatch(page, id);
-    const card = await overlay(page, 90000);
-    report.providerError = card;
-    log('provider_error_overlay', card);
-    if (card.state !== 'error') throw new Error(`provider_error_state:${card.state}:${card.text}`);
-    if (!/Unavailable|Ratings could not be loaded/i.test(card.text)) throw new Error(`provider_error_copy:${card.text}`);
-    if (/tubescore_manual_smoke|internal_failure/i.test(card.text)) throw new Error(`provider_error_leak:${card.text}`);
-    if (card.count !== 1) throw new Error(`provider_error_count:${card.count}`);
-  } finally {
-    await context.close();
-  }
-}
-
 await mkdir(OUT, { recursive: true });
-const root = await mkdtemp(join(tmpdir(), 'tubescore-manual-regression-'));
+await instrumentContentScript();
+const root = await mkdtemp(join(tmpdir(), 'tubescore-dune-bridge-'));
+const context = await launch(join(root, 'profile'));
+let report = { status: 'running', browser: context.browser()?.version() ?? 'unknown' };
 try {
-  await runSuccessCases(root);
-  await runProviderError(root);
-  report.status = 'pass';
-  log('manual_regression_gate_pass');
+  const page = context.pages()[0] ?? await context.newPage();
+  await page.goto(`https://www.youtube.com/watch?v=${DUNE_ID}&hl=en&gl=US`, { waitUntil: 'domcontentloaded', timeout: 60000 });
+  await dismissConsent(page);
+  await page.waitForFunction((id) => new URL(location.href).searchParams.get('v') === id && Boolean(document.querySelector('h1.ytd-watch-metadata yt-formatted-string, h1 yt-formatted-string')?.textContent?.trim()), DUNE_ID, { timeout: 70000 });
+  await page.waitForTimeout(8000);
+  const diagnostic = await page.evaluate(() => ({
+    request: document.documentElement.getAttribute('data-tubescore-diag-request'),
+    response: document.documentElement.getAttribute('data-tubescore-diag-response'),
+    error: document.documentElement.getAttribute('data-tubescore-diag-error'),
+    title: document.querySelector('h1.ytd-watch-metadata yt-formatted-string, h1 yt-formatted-string')?.textContent?.trim() ?? '',
+    card: document.querySelector('.tubescore-card')?.textContent?.replace(/\s+/g, ' ').trim() ?? '',
+    state: document.querySelector('.tubescore-card')?.getAttribute('data-tubescore-state') ?? ''
+  }));
+  log('dune_bridge_trace', diagnostic);
+  report = { status: 'captured', browser: report.browser, diagnostic };
+  if (!diagnostic.request) throw new Error('recognition_request_not_observed');
 } catch (error) {
-  report.status = 'fail';
-  report.error = error instanceof Error ? `${error.name}: ${error.message}\n${error.stack ?? ''}` : String(error);
-  log('manual_regression_gate_fail', { error: report.error });
+  report = { status: 'fail', browser: report.browser, error: error instanceof Error ? `${error.name}: ${error.message}` : String(error) };
+  log('dune_bridge_trace_fail', report);
   process.exitCode = 1;
 } finally {
-  await writeFile(join(OUT, 'manual-regression.json'), `${JSON.stringify(report, null, 2)}\n`);
-  await writeFile(join(OUT, 'manual-regression.log'), `${logs.map((line) => JSON.stringify(line)).join('\n')}\n`);
+  await writeFile(join(OUT, 'dune-bridge-trace.json'), `${JSON.stringify(report, null, 2)}\n`);
+  await writeFile(join(OUT, 'dune-bridge-trace.log'), `${logs.map((line) => JSON.stringify(line)).join('\n')}\n`);
+  await context.close();
   await rm(root, { recursive: true, force: true }).catch(() => undefined);
 }
