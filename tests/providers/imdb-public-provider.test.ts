@@ -55,6 +55,32 @@ describe('IMDb public providers', () => {
     expect(new Headers(init?.headers).has('authorization')).toBe(false);
   });
 
+  it('binds the default global fetch receiver for service-worker-compatible calls', async () => {
+    const originalFetch = globalThis.fetch;
+    const receiverSensitiveFetch = function (
+      this: unknown,
+      _input: RequestInfo | URL,
+      _init?: RequestInit
+    ): Promise<Response> {
+      if (this !== globalThis) {
+        return Promise.reject(new TypeError('Illegal invocation'));
+      }
+      return Promise.resolve(new Response(JSON.stringify({
+        d: [{ id: 'tt15239678', l: 'Dune: Part Two', y: 2024, qid: 'movie' }]
+      }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
+    };
+
+    globalThis.fetch = receiverSensitiveFetch as typeof fetch;
+    try {
+      const provider = new ImdbPublicCatalogProvider({ suggestionBaseUrl });
+      await expect(provider.search('Dune Part Two')).resolves.toMatchObject([
+        { providerId: 'tt15239678', title: 'Dune: Part Two' }
+      ]);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   it('skips malformed or unsupported suggestion entries', async () => {
     const fetchFn = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => new Response(JSON.stringify({
       d: [
