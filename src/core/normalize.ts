@@ -24,3 +24,13 @@ export function normalizeYouTubeTitle(input: string): string {
     .trim()
     .toLowerCase();
 }
+
+export function primaryYouTubeTitle(input: string): string {
+  const [primary = input] = input.split(/\s[|•·–—]\s/, 1);
+  return normalizeYouTubeTitle(primary);
+}
+
+export function extractFourDigitYear(input: string): number | undefined {
+  const match = input.match(/\b(19\d{2}|20\d{2}|21\d{2})\b/);
+  return match ? Number(match[1]) : undefined;
+}

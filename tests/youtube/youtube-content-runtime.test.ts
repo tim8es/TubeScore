@@ -155,6 +155,32 @@ describe('YouTubeContentRuntime', () => {
     runtime.stop();
   });
 
+  it('keeps an in-flight recognition valid across a transient metadata gap for the same video', async () => {
+    setWatchPage('dune', 'Dune: Part Two | Official Trailer');
+
+    let resolveRecognition!: (result: RecognitionResult) => void;
+    const pending = new Promise<RecognitionResult>((resolve) => {
+      resolveRecognition = resolve;
+    });
+    const recognize = vi.fn(() => pending);
+    const runtime = new YouTubeContentRuntime({ recognize });
+
+    runtime.start();
+    expect(recognize).toHaveBeenCalledOnce();
+
+    document.querySelector('h1')?.remove();
+    window.dispatchEvent(new Event('yt-navigate-finish'));
+    await Promise.resolve();
+    expect(recognize).toHaveBeenCalledOnce();
+
+    resolveRecognition(resultFor('Dune: Part Two'));
+    await vi.waitFor(() => {
+      expect(document.querySelector('.tubescore-card__title')?.textContent).toContain('Dune: Part Two');
+    });
+
+    runtime.stop();
+  });
+
   it('removes the previous card when navigating away from a watch page', async () => {
     setWatchPage('first', 'First Movie | Official Trailer');
     const runtime = new YouTubeContentRuntime({

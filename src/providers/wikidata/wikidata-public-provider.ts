@@ -48,6 +48,7 @@ const DEFAULT_MAX_429_RETRIES = 2;
 const DEFAULT_MAX_RETRY_AFTER_MS = 30_000;
 const DEFAULT_RETRY_DELAY_MS = 1_000;
 const ITEM_ID = /^Q\d+$/;
+const YOUTUBE_VIDEO_ID = /^[A-Za-z0-9_-]{6,20}$/;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -248,6 +249,20 @@ function searchCandidate(value: unknown): CatalogCandidate | null {
   };
 }
 
+function englishValue(container: unknown): string | null {
+  if (!isRecord(container) || !isRecord(container.en)) return null;
+  const value = container.en.value;
+  return typeof value === 'string' && value.trim() ? value.trim() : null;
+}
+
+function entityCandidate(entity: unknown, id: string): CatalogCandidate | null {
+  if (!isRecord(entity)) return null;
+  const label = englishValue(entity.labels);
+  const description = englishValue(entity.descriptions);
+  if (!label || !description) return null;
+  return searchCandidate({ id, label, description });
+}
+
 function parseNumericScore(value: unknown): { value: number; scale: number } | null {
   if (typeof value !== 'string') return null;
   const trimmed = value.trim();
@@ -348,6 +363,48 @@ export class WikidataPublicCatalogProvider {
 
     return payload.search
       .map(searchCandidate)
+      .filter((candidate): candidate is CatalogCandidate => candidate !== null);
+  }
+
+  async searchByYouTubeVideoId(videoId: string): Promise<CatalogCandidate[]> {
+    const normalizedVideoId = videoId.trim();
+    if (!YOUTUBE_VIDEO_ID.test(normalizedVideoId)) return [];
+
+    const searchUrl = new URL(this.apiBaseUrl);
+    searchUrl.searchParams.set('action', 'query');
+    searchUrl.searchParams.set('list', 'search');
+    searchUrl.searchParams.set('srsearch', `haswbstatement:P1651=${normalizedVideoId}`);
+    searchUrl.searchParams.set('srlimit', '10');
+    searchUrl.searchParams.set('format', 'json');
+    searchUrl.searchParams.set('origin', '*');
+
+    const searchPayload = await this.client.getJson(searchUrl);
+    if (!isRecord(searchPayload) || !isRecord(searchPayload.query) || !Array.isArray(searchPayload.query.search)) {
+      throw new WikidataProviderError('invalid_response');
+    }
+
+    const ids = searchPayload.query.search
+      .map((result) => isRecord(result) && typeof result.title === 'string' ? result.title : '')
+      .filter((id): id is string => ITEM_ID.test(id));
+    const uniqueIds = [...new Set(ids)];
+    if (uniqueIds.length === 0) return [];
+
+    const entityUrl = new URL(this.apiBaseUrl);
+    entityUrl.searchParams.set('action', 'wbgetentities');
+    entityUrl.searchParams.set('ids', uniqueIds.join('|'));
+    entityUrl.searchParams.set('props', 'labels|descriptions');
+    entityUrl.searchParams.set('languages', 'en');
+    entityUrl.searchParams.set('format', 'json');
+    entityUrl.searchParams.set('origin', '*');
+
+    const entityPayload = await this.client.getJson(entityUrl);
+    if (!isRecord(entityPayload) || !isRecord(entityPayload.entities)) {
+      throw new WikidataProviderError('invalid_response');
+    }
+    const entities = entityPayload.entities;
+
+    return uniqueIds
+      .map((id) => entityCandidate(entities[id], id))
       .filter((candidate): candidate is CatalogCandidate => candidate !== null);
   }
 }

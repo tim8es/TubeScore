@@ -1,13 +1,17 @@
-import { normalizeYouTubeTitle } from './normalize';
+import {
+  extractFourDigitYear,
+  normalizeYouTubeTitle,
+  primaryYouTubeTitle
+} from './normalize';
 import type { CatalogCandidate, MatchScore, YouTubeVideoContext } from './types';
-
-function extractYear(value: string): number | undefined {
-  const match = value.match(/\b(19\d{2}|20\d{2}|21\d{2})\b/);
-  return match ? Number(match[1]) : undefined;
-}
 
 function withoutYear(value: string): string {
   return value.replace(/\b(19\d{2}|20\d{2}|21\d{2})\b/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+function extractFourDigitYears(value: string): number[] {
+  return [...value.matchAll(/\b(19\d{2}|20\d{2}|21\d{2})\b/g)]
+    .map((match) => Number(match[1]));
 }
 
 function tokenSet(value: string): Set<string> {
@@ -31,8 +35,9 @@ export function scoreCandidate(
   context: YouTubeVideoContext,
   candidate: CatalogCandidate
 ): MatchScore {
-  const normalizedContext = normalizeYouTubeTitle(context.title);
-  const contextYear = extractYear(normalizedContext);
+  const normalizedContext = primaryYouTubeTitle(context.title);
+  const titleYear = extractFourDigitYear(context.title);
+  const descriptionYears = titleYear === undefined ? extractFourDigitYears(context.description) : [];
   const contextTitle = withoutYear(normalizedContext);
   const candidateTitle = withoutYear(normalizeYouTubeTitle(candidate.title));
   const originalTitle = candidate.originalTitle
@@ -51,11 +56,19 @@ export function scoreCandidate(
   else if (similarity >= 0.7) reasons.push('title-near-match');
   else reasons.push('title-weak-match');
 
-  if (contextYear !== undefined && candidate.releaseYear !== undefined) {
-    if (contextYear === candidate.releaseYear) {
+  if (candidate.releaseYear !== undefined) {
+    if (titleYear !== undefined) {
+      if (titleYear === candidate.releaseYear) {
+        confidence += 0.18;
+        reasons.push('year-match');
+      } else {
+        confidence -= 0.25;
+        reasons.push('year-mismatch');
+      }
+    } else if (descriptionYears.includes(candidate.releaseYear)) {
       confidence += 0.18;
       reasons.push('year-match');
-    } else {
+    } else if (descriptionYears.length === 1) {
       confidence -= 0.25;
       reasons.push('year-mismatch');
     }

@@ -79,15 +79,23 @@ export class YouTubeContentRuntime {
   }
 
   private scheduleRecognition(): void {
-    const runId = ++this.generation;
-    this.removeCard();
-
     const context = extractYouTubeVideoContext(this.document, this.window.location);
     if (!context) {
-      if (this.window.location.pathname !== '/watch') {
+      if (this.window.location.pathname === '/watch') {
+        const urlVideoId = new URLSearchParams(this.window.location.search).get('v')?.trim() ?? null;
+        if (urlVideoId && urlVideoId === this.lastVideoId) {
+          return;
+        }
+        if (urlVideoId !== this.lastVideoId) {
+          this.lastVideoId = null;
+        }
+      } else {
         this.lastVideoId = null;
         this.disarmMetadataObserver();
       }
+
+      this.generation += 1;
+      this.removeCard();
       this.currentTask = Promise.resolve();
       return;
     }
@@ -95,10 +103,11 @@ export class YouTubeContentRuntime {
     this.disarmMetadataObserver();
 
     if (context.videoId === this.lastVideoId) {
-      this.currentTask = Promise.resolve();
       return;
     }
 
+    const runId = ++this.generation;
+    this.removeCard();
     this.lastVideoId = context.videoId;
     this.currentTask = this.recognize(context)
       .then((result) => {
@@ -116,8 +125,9 @@ export class YouTubeContentRuntime {
 
   private isCurrentRequest(runId: number, videoId: string): boolean {
     if (!this.started || runId !== this.generation) return false;
-    const current = extractYouTubeVideoContext(this.document, this.window.location);
-    return current?.videoId === videoId;
+    if (this.window.location.pathname !== '/watch') return false;
+    const currentVideoId = new URLSearchParams(this.window.location.search).get('v')?.trim();
+    return currentVideoId === videoId;
   }
 
   private mountCard(card: HTMLElement): void {
