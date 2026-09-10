@@ -25,10 +25,10 @@ describe('Wikidata rating platform links', () => {
                 P1712: [{ mainsnak: { datavalue: { value: 'movie/dune-part-two' } } }],
                 P2603: [{ mainsnak: { datavalue: { value: '4540126' } } }],
                 P444: [
-                  { mainsnak: { datavalue: { value: '8.4/10' } }, qualifiers: { P447: [{ datavalue: { value: { id: 'QIMDb' } } }] } },
-                  { mainsnak: { datavalue: { value: '92%' } }, qualifiers: { P447: [{ datavalue: { value: { id: 'QRT' } } }] } },
-                  { mainsnak: { datavalue: { value: '79/100' } }, qualifiers: { P447: [{ datavalue: { value: { id: 'QMeta' } } }] } },
-                  { mainsnak: { datavalue: { value: '8.6/10' } }, qualifiers: { P447: [{ datavalue: { value: { id: 'QKP' } } }] } }
+                  { mainsnak: { datavalue: { value: '8.4/10' } }, qualifiers: { P447: [{ datavalue: { value: { id: 'Q37312' } } }] } },
+                  { mainsnak: { datavalue: { value: '92%' } }, qualifiers: { P447: [{ datavalue: { value: { id: 'Q105584' } } }] } },
+                  { mainsnak: { datavalue: { value: '79/100' } }, qualifiers: { P447: [{ datavalue: { value: { id: 'Q150248' } } }] } },
+                  { mainsnak: { datavalue: { value: '8.6/10' } }, qualifiers: { P447: [{ datavalue: { value: { id: 'Q2389071' } } }] } }
                 ]
               }
             }
@@ -36,13 +36,13 @@ describe('Wikidata rating platform links', () => {
         });
       }
 
-      if (ids === 'QIMDb|QRT|QMeta|QKP') {
+      if (ids === 'Q37312|Q105584|Q150248|Q2389071') {
         return jsonResponse({
           entities: {
-            QIMDb: { labels: { en: { value: 'Internet Movie Database' } } },
-            QRT: { labels: { en: { value: 'Rotten Tomatoes' } } },
-            QMeta: { labels: { en: { value: 'Metacritic' } } },
-            QKP: { labels: { en: { value: 'Kinopoisk' } } }
+            Q37312: { labels: { en: { value: 'Internet Movie Database' } } },
+            Q105584: { labels: { en: { value: 'Rotten Tomatoes' } } },
+            Q150248: { labels: { en: { value: 'Metacritic' } } },
+            Q2389071: { labels: { en: { value: 'Kinopoisk' } } }
           }
         });
       }
