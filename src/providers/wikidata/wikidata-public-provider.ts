@@ -306,7 +306,16 @@ function statementValue(statement: unknown): string | null {
 function firstClaimString(claims: Record<string, unknown>, property: string): string | null {
   const statements = claims[property];
   if (!Array.isArray(statements)) return null;
-  for (const statement of statements) {
+  const ranked = [...statements].sort((a, b) => {
+    const rankValue = (item: unknown) => {
+      if (!isRecord(item)) return 1;
+      if (item.rank === 'preferred') return 0;
+      if (item.rank === 'deprecated') return 2;
+      return 1;
+    };
+    return rankValue(a) - rankValue(b);
+  });
+  for (const statement of ranked) {
     if (isRecord(statement) && statement.rank === 'deprecated') continue;
     const value = statementValue(statement)?.trim();
     if (value) return value;
