@@ -1,36 +1,47 @@
+import {
+  DEFAULT_ENABLED_RATING_SOURCES,
+  filterRatingsBySources,
+  normalizeEnabledRatingSources,
+  ratingSourceName,
+  sourceCatalogWithRatings
+} from '../core/rating-sources';
 import type { RatingValue, RecognitionResult } from '../core/types';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
-interface BrandSpec {
+interface BrandVisual {
   color: string;
-  path: string;
+  kind: 'letter' | 'imdb' | 'rt' | 'metacritic' | 'letterboxd' | 'wikidata';
+  label?: string;
 }
 
-const BRAND_SPECS: Record<string, BrandSpec> = {
-  IMDb: {
-    color: '#f5c518',
-    path: 'M22.3781 0H1.6218C.7411.0583.0587.7437.0018 1.5953l-.001 20.783c.0585.8761.7125 1.543 1.5559 1.6191A.337.337 0 0 0 1.6016 24h20.7971a.4579.4579 0 0 0 .0437-.002c.8727-.0768 1.5568-.8271 1.5568-1.7085V1.7098c0-.8914-.696-1.6416-1.584-1.7078A.3294.3294 0 0 0 22.3781 0zm0 .496a1.2144 1.2144 0 0 1 1.1252 1.2139v20.5797c0 .6377-.4875 1.1602-1.1045 1.2145H1.6016c-.5967-.0543-1.0645-.5297-1.1053-1.1258V1.6284C.5371 1.0185 1.0184.5364 1.6217.496h20.7564zM4.7954 8.2603v7.3636H2.8899V8.2603h1.9055zm6.5367 0v7.3636H9.6707v-4.9704l-.6711 4.9704H7.813l-.6986-4.8618-.0066 4.8618h-1.668V8.2603h2.468c.0748.4476.1492.9694.2307 1.5734l.2712 1.8713.4407-3.4447h2.4817zm2.9772 1.3289c.0742.0404.122.108.1417.2034.0279.0953.0345.3118.0345.6442v2.8548c0 .4881-.0345.7867-.0955.8954-.0609.1152-.2304.1695-.5018.1695V9.5211c.204 0 .3457.0205.4211.0681zm-.0211 6.0347c.4543 0 .8006-.0265 1.0245-.0742.2304-.0477.4204-.1357.5694-.2648.1556-.1218.2642-.298.3251-.5219.0611-.2238.1021-.6648.1021-1.3224v-2.5832c0-.6986-.0271-1.1668-.0742-1.4039-.041-.237-.1431-.4543-.3126-.6437-.1695-.1973-.4198-.3324-.7456-.421-.3191-.0808-.8542-.1285-1.7694-.1285h-1.4244v7.3636h2.3051zm5.14-1.7827c0 .3523-.0199.5762-.0544.6708-.033.0947-.1894.1424-.3046.1424-.1086 0-.19-.0477-.2238-.1351-.041-.0887-.0609-.2986-.0609-.6238v-1.9469c0-.3324.0199-.5423.0543-.6237.0338-.0808.1086-.122.2171-.122.1153 0 .2709.0412.3114.1425.041.0947.0609.2986.0609.6032v1.8926zm-2.4747-5.5809v7.3636h1.7157l.1152-.4675c.1556.1894.3251.3324.5152.4271.1828.0881.4608.1357.678.1357.3047 0 .5629-.0748.7802-.237.2165-.1562.3589-.3462.4198-.5628.0543-.2173.0887-.543.0887-.9841v-2.0675c0-.4409-.0139-.7324-.0344-.8681-.0199-.1357-.0742-.2781-.1695-.4204-.1021-.1425-.2437-.251-.4272-.3325-.1834-.0742-.3999-.1152-.6576-.1152-.2172 0-.4952.0477-.6846.1285-.1835.0887-.353.2238-.5086.4007V8.2603h-1.8309z'
-  },
-  'Rotten Tomatoes': {
-    color: '#fa320a',
-    path: 'M5.866 0L4.335 1.262l2.082 1.8c-2.629-.989-4.842 1.4-5.012 2.338 1.384-.323 2.24-.422 3.344-.335-7.042 4.634-4.978 13.148-1.434 16.094 5.784 4.612 13.77 3.202 17.91-1.316C27.26 13.363 22.993.65 10.86 2.766c.107-1.17.633-1.503 1.243-1.602-.89-1.493-3.67-.734-4.556 1.374C7.52 2.602 5.866 0 5.866 0zM4.422 7.217H6.9c2.673 0 2.898.012 3.55.202 1.06.307 1.868.973 2.313 1.904.05.106.092.206.13.305l7.623.008.027 2.912-2.745-.024v7.549l-2.982-.016v-7.522l-2.127.016a2.92 2.92 0 0 1-1.056 1.134c-.287.176-.3.19-.254.264.127.2 2.125 3.642 2.125 3.659l-3.39.019-2.013-3.376c-.034-.047-.122-.068-.344-.084l-.297-.02.037 3.48-3.075-.038zm3.016 2.288l.024.338c.014.186.024.729.024 1.206v.867l.582-.025c.32-.013.695-.049.833-.078.694-.146 1.048-.478 1.087-1.018.027-.378-.063-.636-.303-.87-.318-.309-.761-.416-1.733-.418Z'
-  },
-  Metacritic: {
-    color: '#ffcc34',
-    path: 'M11.99 0A12 12 0 1 0 24 12v-.014A12 12 0 0 0 11.99 0Zm-.055 2.564a9.399 9.399 0 0 1 9.407 9.389v.01a9.399 9.399 0 1 1-9.408-9.399Zm-1.61 17.198 2.046-2.046-3.94-3.94c-.165-.166-.345-.373-.442-.608-.221-.47-.318-1.203.221-1.742.664-.664 1.548-.387 2.406.47l3.788 3.788 2.046-2.046-3.954-3.954a2.48 2.48 0 0 1-.456-.622c-.263-.539-.25-1.216.235-1.7.677-.678 1.562-.429 2.544.553l3.677 3.677 2.046-2.046-3.982-3.982c-2.018-2.018-3.912-1.949-5.212-.65-.498.499-.802 1.024-.954 1.618a4.026 4.026 0 0 0-.055 1.686l-.027.028c-.996-.414-2.13-.166-3 .705-1.162 1.161-1.12 2.392-.982 3.11l-.042.043-1.009-.816-1.77 1.77a64.1 64.1 0 0 1 2.213 2.1z'
-  },
-  Kinopoisk: {
-    color: '#ff6600',
-    path: 'M12.049 0C5.45 0 .104 5.373.104 12S5.45 24 12.049 24c3.928 0 7.414-1.904 9.592-4.844l-9.803-5.174 6.256 6.418h-3.559l-4.373-6.086V20.4h-2.89V3.6h2.89v6.095L14.535 3.6h3.559l-6.422 6.627 9.98-5.368C19.476 1.911 15.984 0 12.05 0zm10.924 7.133-9.994 4.027 10.917-.713a11.963 11.963 0 0 0-.923-3.314zm-10.065 5.68 10.065 4.054c.458-1.036.774-2.149.923-3.314l-10.988-.74z'
-  }
+const BRAND_VISUALS: Record<string, BrandVisual> = {
+  Kinopoisk: { color: '#ff6600', kind: 'letter', label: 'K' },
+  IMDb: { color: '#f5c518', kind: 'imdb' },
+  'Rotten Tomatoes': { color: '#fa320a', kind: 'rt' },
+  Metacritic: { color: '#ffcc34', kind: 'metacritic' },
+  AllMovie: { color: '#1677ff', kind: 'letter', label: 'A' },
+  Letterboxd: { color: '#00e054', kind: 'letterboxd' },
+  Douban: { color: '#2e963d', kind: 'letter', label: '豆' },
+  FilmAffinity: { color: '#5f8e97', kind: 'letter', label: 'FA' },
+  'Trakt.tv': { color: '#ed1c24', kind: 'letter', label: 'T' },
+  'Watcha!': { color: '#ff0558', kind: 'letter', label: 'W' },
+  Wikidata: { color: '#7fc4ff', kind: 'wikidata' },
+  TMDB: { color: '#90cea1', kind: 'letter', label: 'TM' }
 };
 
 const PLATFORM_HOSTS: Record<string, ReadonlySet<string>> = {
   IMDb: new Set(['imdb.com', 'www.imdb.com']),
   'Rotten Tomatoes': new Set(['rottentomatoes.com', 'www.rottentomatoes.com']),
   Metacritic: new Set(['metacritic.com', 'www.metacritic.com']),
-  Kinopoisk: new Set(['kinopoisk.ru', 'www.kinopoisk.ru'])
+  Kinopoisk: new Set(['kinopoisk.ru', 'www.kinopoisk.ru']),
+  AllMovie: new Set(['allmovie.com', 'www.allmovie.com']),
+  Letterboxd: new Set(['letterboxd.com', 'www.letterboxd.com']),
+  Douban: new Set(['movie.douban.com']),
+  FilmAffinity: new Set(['filmaffinity.com', 'www.filmaffinity.com']),
+  'Trakt.tv': new Set(['trakt.tv', 'www.trakt.tv']),
+  'Watcha!': new Set(['watcha.com', 'www.watcha.com']),
+  Wikidata: new Set(['wikidata.org', 'www.wikidata.org'])
 };
 
 const STYLES = `
@@ -41,55 +52,112 @@ const STYLES = `
   --tubescore-text: #0f0f0f;
   --tubescore-secondary: #606060;
   --tubescore-border: rgba(0, 0, 0, .10);
-  --tubescore-hover-border: rgba(0, 0, 0, .16);
+  --tubescore-hover-border: rgba(0, 0, 0, .17);
+  --tubescore-drawer: #ffffff;
+  --tubescore-accent: #065fd4;
   box-sizing: border-box;
+  position: relative;
   display: grid;
-  grid-template-columns: minmax(190px, 240px) minmax(0, 1fr);
-  gap: 14px;
+  grid-template-columns: minmax(154px, 188px) minmax(0, 1fr);
+  gap: 10px;
   width: 100%;
-  margin: 12px 0 0;
-  padding: 12px;
+  margin: 10px 0 0;
+  padding: 10px 12px;
   border: 1px solid var(--tubescore-border);
   border-radius: 12px;
   background: var(--tubescore-surface);
   color: var(--tubescore-text);
   font-family: Roboto, Arial, sans-serif;
-  line-height: 1.25;
+  line-height: 1.2;
 }
 html[dark] .tubescore-card, body[dark] .tubescore-card {
-  --tubescore-surface: #212121;
-  --tubescore-chip: #272727;
-  --tubescore-chip-hover: #3f3f3f;
+  --tubescore-surface: #181818;
+  --tubescore-chip: #222222;
+  --tubescore-chip-hover: #303030;
   --tubescore-text: #f1f1f1;
   --tubescore-secondary: #aaaaaa;
-  --tubescore-border: rgba(255, 255, 255, .12);
-  --tubescore-hover-border: rgba(255, 255, 255, .18);
+  --tubescore-border: rgba(255, 255, 255, .13);
+  --tubescore-hover-border: rgba(255, 255, 255, .22);
+  --tubescore-drawer: #181a1d;
+  --tubescore-accent: #3ea6ff;
 }
 .tubescore-card *, .tubescore-card *::before, .tubescore-card *::after { box-sizing: border-box; }
-.tubescore-card__summary { display: flex; flex-direction: column; justify-content: center; min-width: 0; padding: 4px 2px; }
-.tubescore-card__brand { display: flex; align-items: center; gap: 8px; color: var(--tubescore-text); font-size: 16px; font-weight: 600; letter-spacing: -.1px; }
-.tubescore-card__brand-mark { display: inline-flex; align-items: flex-end; gap: 2px; width: 24px; height: 22px; color: #ff0033; }
-.tubescore-card__brand-mark i { display: block; width: 4px; border-radius: 2px 2px 0 0; background: currentColor; }
-.tubescore-card__brand-mark i:nth-child(1) { height: 11px; }
-.tubescore-card__brand-mark i:nth-child(2) { height: 18px; }
-.tubescore-card__brand-mark i:nth-child(3) { height: 14px; }
-.tubescore-card__brand-mark i:nth-child(4) { height: 21px; }
-.tubescore-card__title { margin-top: 7px; overflow: hidden; color: var(--tubescore-text); font-size: 13px; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
-.tubescore-card__meta { margin-top: 3px; color: var(--tubescore-secondary); font-size: 12px; }
-.tubescore-card__ratings { display: flex; min-width: 0; flex-wrap: wrap; gap: 8px; align-items: stretch; }
+.tubescore-card button, .tubescore-card input { font: inherit; }
+.tubescore-card__summary {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding: 6px 4px 5px;
+}
+.tubescore-card__brand {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 4px;
+  color: var(--tubescore-text);
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: -.1px;
+}
+.tubescore-card__brand-mark { display: inline-flex; align-items: flex-end; gap: 2px; width: 21px; height: 18px; color: #ff0033; }
+.tubescore-card__brand-mark i { display: block; width: 3px; border-radius: 2px 2px 0 0; background: currentColor; }
+.tubescore-card__brand-mark i:nth-child(1) { height: 8px; }
+.tubescore-card__brand-mark i:nth-child(2) { height: 15px; }
+.tubescore-card__brand-mark i:nth-child(3) { height: 11px; }
+.tubescore-card__brand-mark i:nth-child(4) { height: 18px; }
+.tubescore-card__title {
+  display: -webkit-box;
+  margin-top: 9px;
+  overflow: hidden;
+  color: var(--tubescore-text);
+  font-size: 14px;
+  font-weight: 650;
+  line-height: 1.25;
+  white-space: normal;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+.tubescore-card__meta { margin-top: 5px; color: var(--tubescore-secondary); font-size: 12px; }
+.tubescore-card__settings-button {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  margin-top: auto;
+  transform: translateY(-3px);
+  place-items: center;
+  border: 1px solid var(--tubescore-border);
+  border-radius: 9px;
+  background: var(--tubescore-chip);
+  color: var(--tubescore-secondary);
+  cursor: pointer;
+}
+.tubescore-card__settings-button:hover { background: var(--tubescore-chip-hover); color: var(--tubescore-text); }
+.tubescore-card__settings-button:focus-visible,
+.tubescore-card__settings-close:focus-visible,
+.tubescore-card__settings-done:focus-visible,
+.tubescore-card__settings-reset:focus-visible {
+  outline: 2px solid var(--tubescore-accent);
+  outline-offset: 2px;
+}
+.tubescore-card__settings-button svg { width: 18px; height: 18px; fill: currentColor; }
+.tubescore-card__ratings {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 8px;
+  min-width: 0;
+  align-content: start;
+}
 .tubescore-card__rating {
   position: relative;
   display: grid;
-  grid-template-columns: 30px minmax(78px, 1fr) 18px;
+  grid-template-columns: 34px minmax(70px, 1fr) 18px;
   grid-template-rows: auto auto;
   grid-template-areas: 'icon source arrow' 'icon value arrow';
-  flex: 1 1 142px;
-  min-width: 132px;
-  max-width: 210px;
-  min-height: 64px;
-  padding: 10px 11px;
+  min-width: 0;
+  min-height: 62px;
+  padding: 9px 10px;
   border: 1px solid var(--tubescore-border);
-  border-radius: 12px;
+  border-radius: 11px;
   background: var(--tubescore-chip);
   color: var(--tubescore-text);
   text-decoration: none;
@@ -110,18 +178,54 @@ a.tubescore-card__rating:focus-visible {
   border-color: transparent;
 }
 html[dark] a.tubescore-card__rating:focus-visible, body[dark] a.tubescore-card__rating:focus-visible { outline-color: #3ea6ff; }
-.tubescore-card__rating-icon { grid-area: icon; align-self: center; display: grid; place-items: center; width: 26px; height: 26px; color: var(--tubescore-brand, #606060); }
-.tubescore-card__rating-icon svg { display: block; width: 24px; height: 24px; fill: currentColor; }
+.tubescore-card__rating-icon { grid-area: icon; align-self: center; display: grid; place-items: center; width: 28px; height: 28px; color: var(--tubescore-brand, #606060); }
+.tubescore-card__rating-icon svg { display: block; width: 27px; height: 27px; overflow: visible; }
 .tubescore-card__rating-source { grid-area: source; align-self: end; overflow: hidden; color: var(--tubescore-text); font-size: 12px; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
-.tubescore-card__rating-value { grid-area: value; align-self: start; margin-top: 2px; color: var(--tubescore-text); font-size: 20px; font-weight: 600; letter-spacing: -.2px; white-space: nowrap; }
-.tubescore-card__rating-arrow { grid-area: arrow; align-self: center; justify-self: end; width: 16px; height: 16px; color: var(--tubescore-secondary); opacity: .85; }
-.tubescore-card__rating-arrow svg { width: 16px; height: 16px; fill: currentColor; }
-.tubescore-card__empty { display: grid; min-height: 64px; min-width: 96px; place-items: center; border: 1px solid var(--tubescore-border); border-radius: 12px; background: var(--tubescore-chip); color: var(--tubescore-secondary); font-size: 22px; }
+.tubescore-card__rating-value { grid-area: value; align-self: start; margin-top: 2px; color: var(--tubescore-text); font-size: 19px; font-weight: 650; letter-spacing: -.2px; white-space: nowrap; }
+.tubescore-card__rating-arrow { grid-area: arrow; align-self: center; justify-self: end; width: 15px; height: 15px; color: var(--tubescore-secondary); opacity: .9; }
+.tubescore-card__rating-arrow svg { display: block; width: 15px; height: 15px; fill: currentColor; }
+.tubescore-card__empty { display: grid; min-height: 62px; place-items: center; border: 1px solid var(--tubescore-border); border-radius: 11px; background: var(--tubescore-chip); color: var(--tubescore-secondary); font-size: 22px; }
+.tubescore-card__settings-panel {
+  position: absolute;
+  z-index: 1000;
+  top: 9px;
+  right: 9px;
+  display: flex;
+  flex-direction: column;
+  width: min(310px, calc(100% - 18px));
+  max-height: min(430px, calc(100vh - 52px));
+  overflow: hidden;
+  border: 1px solid var(--tubescore-border);
+  border-radius: 12px;
+  background: var(--tubescore-drawer);
+  color: var(--tubescore-text);
+  box-shadow: 0 14px 36px rgba(0, 0, 0, .34);
+}
+.tubescore-card__settings-panel[hidden] { display: none !important; }
+.tubescore-card__settings-header { display: grid; grid-template-columns: 1fr 30px; gap: 8px; padding: 14px 14px 11px; border-bottom: 1px solid var(--tubescore-border); }
+.tubescore-card__settings-title { font-size: 16px; font-weight: 700; }
+.tubescore-card__settings-help { grid-column: 1 / -1; color: var(--tubescore-secondary); font-size: 12px; line-height: 1.35; }
+.tubescore-card__settings-close { display: grid; width: 28px; height: 28px; place-items: center; border: 0; border-radius: 7px; background: transparent; color: var(--tubescore-secondary); cursor: pointer; }
+.tubescore-card__settings-close:hover { background: var(--tubescore-chip-hover); color: var(--tubescore-text); }
+.tubescore-card__settings-close svg { width: 16px; height: 16px; fill: currentColor; }
+.tubescore-card__source-list { overflow: auto; padding: 6px 7px; }
+.tubescore-card__source-row { display: grid; grid-template-columns: 27px minmax(0, 1fr) 22px; gap: 9px; min-height: 38px; padding: 5px 6px; align-items: center; border-radius: 7px; cursor: pointer; }
+.tubescore-card__source-row:hover { background: var(--tubescore-chip-hover); }
+.tubescore-card__source-row .tubescore-card__rating-icon { width: 24px; height: 24px; }
+.tubescore-card__source-row .tubescore-card__rating-icon svg { width: 23px; height: 23px; }
+.tubescore-card__source-name { overflow: hidden; font-size: 13px; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
+.tubescore-card__source-checkbox { width: 17px; height: 17px; margin: 0; accent-color: #1677e8; cursor: pointer; }
+.tubescore-card__settings-footer { display: flex; gap: 10px; justify-content: space-between; align-items: center; padding: 10px 12px; border-top: 1px solid var(--tubescore-border); }
+.tubescore-card__settings-reset { padding: 4px 2px; border: 0; background: transparent; color: var(--tubescore-secondary); font-size: 12px; text-decoration: underline; cursor: pointer; }
+.tubescore-card__settings-reset:hover { color: var(--tubescore-text); }
+.tubescore-card__settings-done { min-width: 76px; padding: 8px 16px; border: 0; border-radius: 9px; background: #1677e8; color: #fff; font-size: 13px; font-weight: 600; cursor: pointer; }
+.tubescore-card__settings-done:hover { background: #1268cc; }
 .tubescore-card[data-tubescore-state='error'] { grid-template-columns: 1fr; }
 @media (max-width: 820px) {
   .tubescore-card { grid-template-columns: 1fr; }
-  .tubescore-card__summary { padding-bottom: 0; }
-  .tubescore-card__rating { max-width: none; }
+  .tubescore-card__summary { min-height: 116px; }
+  .tubescore-card__settings-button { margin-top: 9px; transform: none; }
+  .tubescore-card__ratings { grid-template-columns: repeat(auto-fit, minmax(142px, 1fr)); }
 }
 @media (prefers-reduced-motion: reduce) {
   .tubescore-card__rating { transition: none; }
@@ -129,12 +233,13 @@ html[dark] a.tubescore-card__rating:focus-visible, body[dark] a.tubescore-card__
 }
 `;
 
-function mediaTypeLabel(mediaType: 'movie' | 'tv'): string {
-  return mediaType === 'movie' ? 'Movie' : 'TV';
+export interface RatingCardRenderOptions {
+  enabledSources?: readonly string[];
+  onEnabledSourcesChange?(sources: string[]): void | Promise<void>;
 }
 
-function sourceName(source: string): string {
-  return source.replace(/\s+via Wikidata$/i, '').trim();
+function mediaTypeLabel(mediaType: 'movie' | 'tv'): string {
+  return mediaType === 'movie' ? 'Movie' : 'TV';
 }
 
 function formatNumber(value: number): string {
@@ -165,46 +270,110 @@ function ensureStyles(doc: Document): void {
   (doc.head ?? doc.documentElement).append(style);
 }
 
-function brandIcon(doc: Document, name: string): HTMLElement {
+function svgElement<K extends keyof SVGElementTagNameMap>(doc: Document, tag: K): SVGElementTagNameMap[K] {
+  return doc.createElementNS(SVG_NS, tag);
+}
+
+function appendSvgText(doc: Document, svg: SVGSVGElement, text: string, attributes: Record<string, string> = {}): void {
+  const label = svgElement(doc, 'text');
+  label.textContent = text;
+  for (const [name, value] of Object.entries(attributes)) label.setAttribute(name, value);
+  svg.append(label);
+}
+
+function brandIcon(doc: Document, rawName: string): HTMLElement {
+  const name = ratingSourceName(rawName);
+  const visual = BRAND_VISUALS[name] ?? { color: '#8a8a8a', kind: 'letter' as const, label: name.slice(0, 1).toUpperCase() || '?' };
   const wrapper = doc.createElement('span');
   wrapper.className = 'tubescore-card__rating-icon';
-  const brand = BRAND_SPECS[name];
-  if (!brand) {
-    wrapper.textContent = name.slice(0, 1).toUpperCase();
-    return wrapper;
+  wrapper.style.setProperty('--tubescore-brand', visual.color);
+
+  const svg = svgElement(doc, 'svg');
+  svg.setAttribute('viewBox', '0 0 28 28');
+  svg.setAttribute('aria-hidden', 'true');
+  svg.setAttribute('focusable', 'false');
+
+  if (visual.kind === 'imdb') {
+    const rect = svgElement(doc, 'rect');
+    rect.setAttribute('x', '1'); rect.setAttribute('y', '4'); rect.setAttribute('width', '26'); rect.setAttribute('height', '20'); rect.setAttribute('rx', '3'); rect.setAttribute('fill', visual.color);
+    svg.append(rect);
+    appendSvgText(doc, svg, 'IMDb', { x: '14', y: '17.5', 'text-anchor': 'middle', 'font-size': '8', 'font-weight': '800', fill: '#111' });
+  } else if (visual.kind === 'rt') {
+    const circle = svgElement(doc, 'circle');
+    circle.setAttribute('cx', '14'); circle.setAttribute('cy', '14'); circle.setAttribute('r', '12'); circle.setAttribute('fill', visual.color);
+    svg.append(circle);
+    appendSvgText(doc, svg, 'RT', { x: '14', y: '18', 'text-anchor': 'middle', 'font-size': '10', 'font-weight': '800', fill: '#151515' });
+  } else if (visual.kind === 'metacritic') {
+    const circle = svgElement(doc, 'circle');
+    circle.setAttribute('cx', '14'); circle.setAttribute('cy', '14'); circle.setAttribute('r', '11'); circle.setAttribute('fill', 'none'); circle.setAttribute('stroke', visual.color); circle.setAttribute('stroke-width', '3');
+    svg.append(circle);
+    appendSvgText(doc, svg, 'M', { x: '14', y: '19', 'text-anchor': 'middle', 'font-size': '13', 'font-weight': '800', fill: 'currentColor' });
+  } else if (visual.kind === 'letterboxd') {
+    for (const [cx, fill] of [['8', '#ff8000'], ['14', '#00e054'], ['20', '#40bcf4']] as const) {
+      const circle = svgElement(doc, 'circle');
+      circle.setAttribute('cx', cx); circle.setAttribute('cy', '14'); circle.setAttribute('r', '5.5'); circle.setAttribute('fill', fill);
+      svg.append(circle);
+    }
+  } else if (visual.kind === 'wikidata') {
+    const colors = ['#990000', '#339966', '#006699', '#990000', '#339966', '#006699'];
+    colors.forEach((fill, index) => {
+      const rect = svgElement(doc, 'rect');
+      rect.setAttribute('x', String(2 + index * 4)); rect.setAttribute('y', index % 2 === 0 ? '4' : '7'); rect.setAttribute('width', '2.5'); rect.setAttribute('height', index % 2 === 0 ? '20' : '17'); rect.setAttribute('fill', fill);
+      svg.append(rect);
+    });
+  } else {
+    const circle = svgElement(doc, 'circle');
+    circle.setAttribute('cx', '14'); circle.setAttribute('cy', '14'); circle.setAttribute('r', '12'); circle.setAttribute('fill', visual.color);
+    svg.append(circle);
+    appendSvgText(doc, svg, visual.label ?? name.slice(0, 1).toUpperCase(), {
+      x: '14', y: '18.5', 'text-anchor': 'middle', 'font-size': (visual.label?.length ?? 1) > 1 ? '8' : '13', 'font-weight': '800', fill: '#fff'
+    });
   }
-  wrapper.style.setProperty('--tubescore-brand', brand.color);
-  const svg = doc.createElementNS(SVG_NS, 'svg');
+
+  wrapper.append(svg);
+  return wrapper;
+}
+
+function externalLinkIcon(doc: Document): HTMLElement {
+  const wrapper = doc.createElement('span');
+  wrapper.className = 'tubescore-card__rating-arrow';
+  const svg = svgElement(doc, 'svg');
   svg.setAttribute('viewBox', '0 0 24 24');
   svg.setAttribute('aria-hidden', 'true');
   svg.setAttribute('focusable', 'false');
-  const path = doc.createElementNS(SVG_NS, 'path');
-  path.setAttribute('d', brand.path);
+  const path = svgElement(doc, 'path');
+  path.setAttribute('d', 'M14 3h7v7h-2V6.41l-9.29 9.3-1.42-1.42 9.3-9.29H14V3ZM5 5h6v2H5v12h12v-6h2v8H3V5h2Z');
   svg.append(path);
   wrapper.append(svg);
   return wrapper;
 }
 
-function arrowIcon(doc: Document): HTMLElement {
-  const wrapper = doc.createElement('span');
-  wrapper.className = 'tubescore-card__rating-arrow';
-  const svg = doc.createElementNS(SVG_NS, 'svg');
+function gearIcon(doc: Document): SVGSVGElement {
+  const svg = svgElement(doc, 'svg');
   svg.setAttribute('viewBox', '0 0 24 24');
   svg.setAttribute('aria-hidden', 'true');
-  svg.setAttribute('focusable', 'false');
-  const path = doc.createElementNS(SVG_NS, 'path');
-  path.setAttribute('d', 'M9.29 6.71a1 1 0 0 1 1.42 0l4.58 4.58a1 1 0 0 1 0 1.42l-4.58 4.58a1 1 0 1 1-1.42-1.42L13.17 12 9.29 8.12a1 1 0 0 1 0-1.41Z');
+  const path = svgElement(doc, 'path');
+  path.setAttribute('d', 'M19.43 12.98c.04-.32.07-.65.07-.98s-.03-.66-.08-.98l2.11-1.65-2-3.46-2.49 1a7.2 7.2 0 0 0-1.69-.98L15 3.25h-4l-.36 2.67c-.61.25-1.17.58-1.69.98l-2.49-1-2 3.46 2.11 1.65c-.04.33-.07.66-.07.99s.03.66.07.98l-2.11 1.65 2 3.46 2.49-1c.52.4 1.08.73 1.69.98L11 20.75h4l.36-2.67c.61-.25 1.17-.58 1.69-.98l2.49 1 2-3.46-2.11-1.66ZM13 18.75h-2l-.29-2.16-.64-.24a5.3 5.3 0 0 1-1.42-.82l-.53-.42-2 .8-1-1.73 1.7-1.33-.1-.68a5.5 5.5 0 0 1 0-1.66l.1-.68-1.7-1.33 1-1.73 2 .8.53-.42a5.3 5.3 0 0 1 1.42-.82l.64-.24L11 5.25h2l.29 2.16.64.24c.51.2.99.47 1.42.82l.53.42 2-.8 1 1.73-1.7 1.33.1.68c.08.55.08 1.11 0 1.66l-.1.68 1.7 1.33-1 1.73-2-.8-.53.42c-.43.35-.91.62-1.42.82l-.64.24L13 18.75ZM12 8.5A3.5 3.5 0 1 0 12 15a3.5 3.5 0 0 0 0-7Zm0 5A1.5 1.5 0 1 1 12 10a1.5 1.5 0 0 1 0 3.5Z');
   svg.append(path);
-  wrapper.append(svg);
-  return wrapper;
+  return svg;
+}
+
+function closeIcon(doc: Document): SVGSVGElement {
+  const svg = svgElement(doc, 'svg');
+  svg.setAttribute('viewBox', '0 0 24 24');
+  svg.setAttribute('aria-hidden', 'true');
+  const path = svgElement(doc, 'path');
+  path.setAttribute('d', 'm6.4 5 5.6 5.6L17.6 5 19 6.4 13.4 12l5.6 5.6-1.4 1.4-5.6-5.6L6.4 19 5 17.6l5.6-5.6L5 6.4 6.4 5Z');
+  svg.append(path);
+  return svg;
 }
 
 function ratingBadge(doc: Document, rating: RatingValue): HTMLElement {
-  const name = sourceName(rating.source);
+  const name = ratingSourceName(rating.source);
   const destination = safePlatformUrl(name, rating.url);
   const item = destination ? doc.createElement('a') : doc.createElement('span');
   item.className = 'tubescore-card__rating';
-  item.style.setProperty('--tubescore-brand', BRAND_SPECS[name]?.color ?? '#606060');
+  item.style.setProperty('--tubescore-brand', BRAND_VISUALS[name]?.color ?? '#777');
 
   if (destination && item.tagName === 'A') {
     const link = item as HTMLAnchorElement;
@@ -225,7 +394,7 @@ function ratingBadge(doc: Document, rating: RatingValue): HTMLElement {
   value.textContent = formatRatingValue(rating.value, rating.scale);
 
   item.append(brandIcon(doc, name), label, value);
-  if (destination) item.append(arrowIcon(doc));
+  if (destination) item.append(externalLinkIcon(doc));
   return item;
 }
 
@@ -250,6 +419,103 @@ function brandHeader(doc: Document, suffix?: 'Likely' | 'Unavailable'): HTMLElem
   return header;
 }
 
+function settingsButton(doc: Document): HTMLButtonElement {
+  const button = doc.createElement('button');
+  button.type = 'button';
+  button.className = 'tubescore-card__settings-button';
+  button.setAttribute('aria-label', 'Select rating services');
+  button.setAttribute('aria-expanded', 'false');
+  button.append(gearIcon(doc));
+  return button;
+}
+
+function createSettingsPanel(
+  doc: Document,
+  result: RecognitionResult,
+  selected: Set<string>,
+  rerenderRatings: () => void,
+  onDone: (sources: string[]) => void
+): HTMLElement {
+  const panel = doc.createElement('aside');
+  panel.className = 'tubescore-card__settings-panel';
+  panel.hidden = true;
+  panel.setAttribute('aria-label', 'Rating service settings');
+
+  const header = doc.createElement('div');
+  header.className = 'tubescore-card__settings-header';
+  const title = doc.createElement('strong');
+  title.className = 'tubescore-card__settings-title';
+  title.textContent = 'Select rating services';
+  const close = doc.createElement('button');
+  close.type = 'button';
+  close.className = 'tubescore-card__settings-close';
+  close.setAttribute('aria-label', 'Close rating service settings');
+  close.append(closeIcon(doc));
+  const help = doc.createElement('span');
+  help.className = 'tubescore-card__settings-help';
+  help.textContent = 'Choose which rating services TubeScore searches for and shows on this page.';
+  header.append(title, close, help);
+
+  const list = doc.createElement('div');
+  list.className = 'tubescore-card__source-list';
+  const catalog = sourceCatalogWithRatings(result.ratings);
+  const checkboxes = new Map<string, HTMLInputElement>();
+
+  for (const name of catalog) {
+    const row = doc.createElement('label');
+    row.className = 'tubescore-card__source-row';
+    row.append(brandIcon(doc, name));
+
+    const label = doc.createElement('span');
+    label.className = 'tubescore-card__source-name';
+    label.textContent = name;
+
+    const checkbox = doc.createElement('input');
+    checkbox.type = 'checkbox';
+    checkbox.className = 'tubescore-card__source-checkbox';
+    checkbox.dataset.sourceName = name;
+    checkbox.checked = selected.has(name);
+    checkbox.addEventListener('change', () => {
+      if (checkbox.checked) selected.add(name);
+      else selected.delete(name);
+      rerenderRatings();
+    });
+    checkboxes.set(name, checkbox);
+    row.append(label, checkbox);
+    list.append(row);
+  }
+
+  const footer = doc.createElement('div');
+  footer.className = 'tubescore-card__settings-footer';
+  const reset = doc.createElement('button');
+  reset.type = 'button';
+  reset.className = 'tubescore-card__settings-reset';
+  reset.textContent = 'Reset to recommended';
+  reset.addEventListener('click', () => {
+    selected.clear();
+    for (const name of DEFAULT_ENABLED_RATING_SOURCES) selected.add(name);
+    for (const [name, checkbox] of checkboxes) checkbox.checked = selected.has(name);
+    rerenderRatings();
+  });
+
+  const done = doc.createElement('button');
+  done.type = 'button';
+  done.className = 'tubescore-card__settings-done';
+  done.textContent = 'Done';
+  done.addEventListener('click', () => {
+    const ordered = catalog.filter((name) => selected.has(name));
+    panel.hidden = true;
+    onDone(ordered);
+  });
+
+  close.addEventListener('click', () => {
+    panel.hidden = true;
+  });
+  footer.append(reset, done);
+  panel.append(header, list, footer);
+  return panel;
+}
+
 export function renderUnavailableCard(): HTMLElement {
   const doc = document;
   ensureStyles(doc);
@@ -271,7 +537,10 @@ export function renderUnavailableCard(): HTMLElement {
   return card;
 }
 
-export function renderRatingCard(result: RecognitionResult): HTMLElement {
+export function renderRatingCard(
+  result: RecognitionResult,
+  options: RatingCardRenderOptions = {}
+): HTMLElement {
   const doc = document;
   ensureStyles(doc);
   const card = doc.createElement('section');
@@ -284,6 +553,10 @@ export function renderRatingCard(result: RecognitionResult): HTMLElement {
     return card;
   }
 
+  const enabledSources = normalizeEnabledRatingSources(
+    options.enabledSources ?? DEFAULT_ENABLED_RATING_SOURCES
+  );
+  const selected = new Set(enabledSources);
   const { candidate } = result.decision.score;
   const summary = doc.createElement('div');
   summary.className = 'tubescore-card__summary';
@@ -291,28 +564,47 @@ export function renderRatingCard(result: RecognitionResult): HTMLElement {
 
   const title = doc.createElement('strong');
   title.className = 'tubescore-card__title';
-  title.textContent = candidate.releaseYear
-    ? `${candidate.title} (${candidate.releaseYear})`
-    : candidate.title;
+  title.textContent = candidate.title;
 
   const meta = doc.createElement('span');
   meta.className = 'tubescore-card__meta';
-  meta.textContent = mediaTypeLabel(candidate.mediaType);
-  summary.append(title, meta);
+  meta.textContent = candidate.releaseYear
+    ? `${mediaTypeLabel(candidate.mediaType)} · ${candidate.releaseYear}`
+    : mediaTypeLabel(candidate.mediaType);
+
+  const gear = settingsButton(doc);
+  summary.append(title, meta, gear);
 
   const ratings = doc.createElement('div');
   ratings.className = 'tubescore-card__ratings';
 
-  if (result.ratings.length === 0) {
-    const item = doc.createElement('span');
-    item.className = 'tubescore-card__empty';
-    item.textContent = '—';
-    item.setAttribute('aria-label', 'No ratings available');
-    ratings.append(item);
-  } else {
-    for (const rating of result.ratings) ratings.append(ratingBadge(doc, rating));
-  }
+  const renderRatings = (): void => {
+    ratings.replaceChildren();
+    const visible = filterRatingsBySources(result.ratings, [...selected]);
+    if (visible.length === 0) {
+      const item = doc.createElement('span');
+      item.className = 'tubescore-card__empty';
+      item.textContent = '—';
+      item.setAttribute('aria-label', 'No ratings available');
+      ratings.append(item);
+      return;
+    }
+    for (const rating of visible) ratings.append(ratingBadge(doc, rating));
+  };
+  renderRatings();
 
-  card.append(summary, ratings);
+  const panel = createSettingsPanel(doc, result, selected, renderRatings, (sources) => {
+    gear.setAttribute('aria-expanded', 'false');
+    void options.onEnabledSourcesChange?.(sources);
+  });
+  gear.addEventListener('click', () => {
+    panel.hidden = false;
+    gear.setAttribute('aria-expanded', 'true');
+  });
+  panel.querySelector('.tubescore-card__settings-close')?.addEventListener('click', () => {
+    gear.setAttribute('aria-expanded', 'false');
+  });
+
+  card.append(summary, ratings, panel);
   return card;
 }

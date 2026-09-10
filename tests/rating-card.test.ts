@@ -21,7 +21,7 @@ const base: RecognitionResult = {
 
 describe('renderRatingCard', () => {
   it('renders title, year, media type and rating for a high-confidence match', () => {
-    const card = renderRatingCard(base);
+    const card = renderRatingCard(base, { enabledSources: ['TMDB'] });
     expect(card.dataset.tubescoreState).toBe('high');
     expect(card.textContent).toContain('Dune: Part Two');
     expect(card.textContent).toContain('2024');

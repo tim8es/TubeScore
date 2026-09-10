@@ -1,6 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { CatalogCandidate } from '../../src/core/types';
-import { WikidataPublicRatingsProvider } from '../../src/providers/wikidata/wikidata-public-provider';
+import {
+  WikidataApiClient,
+  WikidataPublicRatingsProvider
+} from '../../src/providers/wikidata/wikidata-public-provider';
+import { enrichWikidataRatingUrls } from '../../src/providers/wikidata/wikidata-platform-links';
 
 const candidate: CatalogCandidate = {
   providerId: 'Q48252',
@@ -59,7 +63,11 @@ describe('Wikidata direct platform destinations', () => {
       throw new Error(`unexpected_url:${url}`);
     });
 
-    const ratings = await new WikidataPublicRatingsProvider({ fetchFn }).getRatings(candidate);
+    const client = new WikidataApiClient({ fetchFn });
+    const provider = new WikidataPublicRatingsProvider({ client });
+    const baseRatings = await provider.getRatings(candidate);
+    const ratings = await enrichWikidataRatingUrls(candidate, baseRatings, client);
+
     expect(Object.fromEntries(ratings.map((rating) => [rating.source.replace(' via Wikidata', ''), rating.url]))).toMatchObject({
       Letterboxd: 'https://letterboxd.com/film/everything-everywhere-all-at-once/',
       Douban: 'https://movie.douban.com/subject/30314848/',
@@ -67,5 +75,6 @@ describe('Wikidata direct platform destinations', () => {
       FilmAffinity: 'https://www.filmaffinity.com/en/film689708.html',
       'Trakt.tv': 'https://trakt.tv/movies/everything-everywhere-all-at-once-2022'
     });
+    expect(fetchFn).toHaveBeenCalledTimes(2);
   });
 });
