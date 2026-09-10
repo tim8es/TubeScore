@@ -183,7 +183,7 @@ describe('manual YouTube regression cases', () => {
     expect(result?.decision.score.candidate.providerId).toBe('Q200');
   });
 
-  it('renders a recognized title with no P444 as no-rating rather than a provider error', async () => {
+  it('renders a recognized title with no P444 as an accessible dash rather than a provider error', async () => {
     const fetchFn = vi.fn(async (input: RequestInfo | URL) => {
       const url = new URL(String(input));
       if (url.searchParams.get('action') === 'query') return exactIdMiss();
@@ -203,7 +203,9 @@ describe('manual YouTube regression cases', () => {
     expect(result).not.toBeNull();
     expect(result?.ratings).toEqual([]);
     const card = renderRatingCard(result!);
-    expect(card.textContent).toContain('No rating available');
+    const empty = card.querySelector('.tubescore-card__empty');
+    expect(empty?.textContent).toBe('—');
+    expect(empty?.getAttribute('aria-label')).toBe('No ratings available');
     expect(card.textContent).not.toContain('Unavailable');
   });
 });
