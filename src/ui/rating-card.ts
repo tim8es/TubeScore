@@ -35,6 +35,13 @@ const PLATFORM_HOSTS: Record<string, ReadonlySet<string>> = {
 
 const STYLES = `
 .tubescore-card {
+  --tubescore-surface: #f2f2f2;
+  --tubescore-chip: #ffffff;
+  --tubescore-chip-hover: #e5e5e5;
+  --tubescore-text: #0f0f0f;
+  --tubescore-secondary: #606060;
+  --tubescore-border: rgba(0, 0, 0, .10);
+  --tubescore-hover-border: rgba(0, 0, 0, .16);
   box-sizing: border-box;
   display: grid;
   grid-template-columns: minmax(190px, 240px) minmax(0, 1fr);
@@ -42,24 +49,33 @@ const STYLES = `
   width: 100%;
   margin: 12px 0 0;
   padding: 12px;
-  border: 1px solid rgba(255, 255, 255, .12);
+  border: 1px solid var(--tubescore-border);
   border-radius: 12px;
-  background: var(--yt-spec-raised-background, #212121);
-  color: var(--yt-spec-text-primary, #f1f1f1);
+  background: var(--tubescore-surface);
+  color: var(--tubescore-text);
   font-family: Roboto, Arial, sans-serif;
   line-height: 1.25;
 }
+html[dark] .tubescore-card, body[dark] .tubescore-card {
+  --tubescore-surface: #212121;
+  --tubescore-chip: #272727;
+  --tubescore-chip-hover: #3f3f3f;
+  --tubescore-text: #f1f1f1;
+  --tubescore-secondary: #aaaaaa;
+  --tubescore-border: rgba(255, 255, 255, .12);
+  --tubescore-hover-border: rgba(255, 255, 255, .18);
+}
 .tubescore-card *, .tubescore-card *::before, .tubescore-card *::after { box-sizing: border-box; }
 .tubescore-card__summary { display: flex; flex-direction: column; justify-content: center; min-width: 0; padding: 4px 2px; }
-.tubescore-card__brand { display: flex; align-items: center; gap: 8px; font-size: 16px; font-weight: 600; letter-spacing: -.1px; }
+.tubescore-card__brand { display: flex; align-items: center; gap: 8px; color: var(--tubescore-text); font-size: 16px; font-weight: 600; letter-spacing: -.1px; }
 .tubescore-card__brand-mark { display: inline-flex; align-items: flex-end; gap: 2px; width: 24px; height: 22px; color: #ff0033; }
 .tubescore-card__brand-mark i { display: block; width: 4px; border-radius: 2px 2px 0 0; background: currentColor; }
 .tubescore-card__brand-mark i:nth-child(1) { height: 11px; }
 .tubescore-card__brand-mark i:nth-child(2) { height: 18px; }
 .tubescore-card__brand-mark i:nth-child(3) { height: 14px; }
 .tubescore-card__brand-mark i:nth-child(4) { height: 21px; }
-.tubescore-card__title { margin-top: 7px; overflow: hidden; color: var(--yt-spec-text-primary, #f1f1f1); font-size: 13px; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
-.tubescore-card__meta { margin-top: 3px; color: var(--yt-spec-text-secondary, #aaa); font-size: 12px; }
+.tubescore-card__title { margin-top: 7px; overflow: hidden; color: var(--tubescore-text); font-size: 13px; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
+.tubescore-card__meta { margin-top: 3px; color: var(--tubescore-secondary); font-size: 12px; }
 .tubescore-card__ratings { display: flex; min-width: 0; flex-wrap: wrap; gap: 8px; align-items: stretch; }
 .tubescore-card__rating {
   position: relative;
@@ -72,10 +88,10 @@ const STYLES = `
   max-width: 210px;
   min-height: 64px;
   padding: 10px 11px;
-  border: 1px solid rgba(255, 255, 255, .10);
+  border: 1px solid var(--tubescore-border);
   border-radius: 12px;
-  background: var(--yt-spec-badge-chip-background, #272727);
-  color: var(--yt-spec-text-primary, #f1f1f1);
+  background: var(--tubescore-chip);
+  color: var(--tubescore-text);
   text-decoration: none;
   cursor: default;
   user-select: none;
@@ -83,23 +99,24 @@ const STYLES = `
 }
 a.tubescore-card__rating { cursor: pointer; }
 a.tubescore-card__rating:hover {
-  background: rgba(255, 255, 255, .11);
-  border-color: rgba(255, 255, 255, .18);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, .22);
+  background: var(--tubescore-chip-hover);
+  border-color: var(--tubescore-hover-border);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, .14);
   transform: translateY(-1px);
 }
 a.tubescore-card__rating:focus-visible {
-  outline: 2px solid #3ea6ff;
+  outline: 2px solid #065fd4;
   outline-offset: 2px;
   border-color: transparent;
 }
-.tubescore-card__rating-icon { grid-area: icon; align-self: center; display: grid; place-items: center; width: 26px; height: 26px; color: var(--tubescore-brand, #aaa); }
+html[dark] a.tubescore-card__rating:focus-visible, body[dark] a.tubescore-card__rating:focus-visible { outline-color: #3ea6ff; }
+.tubescore-card__rating-icon { grid-area: icon; align-self: center; display: grid; place-items: center; width: 26px; height: 26px; color: var(--tubescore-brand, #606060); }
 .tubescore-card__rating-icon svg { display: block; width: 24px; height: 24px; fill: currentColor; }
-.tubescore-card__rating-source { grid-area: source; align-self: end; overflow: hidden; color: var(--yt-spec-text-primary, #f1f1f1); font-size: 12px; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
-.tubescore-card__rating-value { grid-area: value; align-self: start; margin-top: 2px; color: var(--yt-spec-text-primary, #f1f1f1); font-size: 20px; font-weight: 600; letter-spacing: -.2px; white-space: nowrap; }
-.tubescore-card__rating-arrow { grid-area: arrow; align-self: center; justify-self: end; width: 16px; height: 16px; color: var(--yt-spec-text-secondary, #aaa); opacity: .85; }
+.tubescore-card__rating-source { grid-area: source; align-self: end; overflow: hidden; color: var(--tubescore-text); font-size: 12px; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
+.tubescore-card__rating-value { grid-area: value; align-self: start; margin-top: 2px; color: var(--tubescore-text); font-size: 20px; font-weight: 600; letter-spacing: -.2px; white-space: nowrap; }
+.tubescore-card__rating-arrow { grid-area: arrow; align-self: center; justify-self: end; width: 16px; height: 16px; color: var(--tubescore-secondary); opacity: .85; }
 .tubescore-card__rating-arrow svg { width: 16px; height: 16px; fill: currentColor; }
-.tubescore-card__empty { display: grid; min-height: 64px; min-width: 96px; place-items: center; border-radius: 12px; background: var(--yt-spec-badge-chip-background, #272727); color: var(--yt-spec-text-secondary, #aaa); font-size: 22px; }
+.tubescore-card__empty { display: grid; min-height: 64px; min-width: 96px; place-items: center; border: 1px solid var(--tubescore-border); border-radius: 12px; background: var(--tubescore-chip); color: var(--tubescore-secondary); font-size: 22px; }
 .tubescore-card[data-tubescore-state='error'] { grid-template-columns: 1fr; }
 @media (max-width: 820px) {
   .tubescore-card { grid-template-columns: 1fr; }
@@ -187,7 +204,7 @@ function ratingBadge(doc: Document, rating: RatingValue): HTMLElement {
   const destination = safePlatformUrl(name, rating.url);
   const item = destination ? doc.createElement('a') : doc.createElement('span');
   item.className = 'tubescore-card__rating';
-  item.style.setProperty('--tubescore-brand', BRAND_SPECS[name]?.color ?? '#aaa');
+  item.style.setProperty('--tubescore-brand', BRAND_SPECS[name]?.color ?? '#606060');
 
   if (destination && item.tagName === 'A') {
     const link = item as HTMLAnchorElement;
