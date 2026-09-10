@@ -5,9 +5,9 @@ import type { CatalogCandidate, MatchScore, RecognitionResult, YouTubeVideoConte
 import {
   WikidataApiClient,
   WikidataProviderError,
-  WikidataPublicCatalogProvider,
-  WikidataPublicRatingsProvider
+  WikidataPublicCatalogProvider
 } from '../providers/wikidata/wikidata-public-provider';
+import { WikidataLinkedRatingsProvider } from '../providers/wikidata/wikidata-linked-ratings-provider';
 
 type FetchFn = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 
@@ -45,7 +45,7 @@ export function createPublicRecognitionOrchestrator(
     ...(options.apiBaseUrl ? { apiBaseUrl: options.apiBaseUrl } : {})
   };
   const catalog = new WikidataPublicCatalogProvider(providerOptions);
-  const ratings = new WikidataPublicRatingsProvider(providerOptions);
+  const ratings = new WikidataLinkedRatingsProvider(providerOptions);
 
   const resultForVisibleScore = async (score: MatchScore): Promise<RecognitionResult> => {
     const decision = decideMatch(score);
