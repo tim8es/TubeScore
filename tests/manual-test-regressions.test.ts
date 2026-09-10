@@ -203,7 +203,7 @@ describe('manual YouTube regression cases', () => {
     expect(result).not.toBeNull();
     expect(result?.ratings).toEqual([]);
     const card = renderRatingCard(result!);
-    expect(card.textContent).toContain('No rating available');
+    expect(card.querySelector('.tubescore-card__empty')?.textContent).toBe('—');
     expect(card.textContent).not.toContain('Unavailable');
   });
 });
