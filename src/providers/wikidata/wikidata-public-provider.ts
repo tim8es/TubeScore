@@ -49,6 +49,12 @@ const DEFAULT_MAX_RETRY_AFTER_MS = 30_000;
 const DEFAULT_RETRY_DELAY_MS = 1_000;
 const ITEM_ID = /^Q\d+$/;
 const YOUTUBE_VIDEO_ID = /^[A-Za-z0-9_-]{6,20}$/;
+const SOURCE_PRIORITY = new Map<string, number>([
+  ['Kinopoisk', 0],
+  ['IMDb', 1],
+  ['Rotten Tomatoes', 2],
+  ['Metacritic', 3]
+]);
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -309,19 +315,54 @@ function issuerId(statement: unknown): string | null {
   return null;
 }
 
-function chooseReviewStatement(statements: unknown[]): { parsed: { value: number; scale: number }; issuerId: string | null } | null {
+interface ReviewStatement {
+  parsed: { value: number; scale: number };
+  issuerId: string | null;
+}
+
+function reviewStatements(statements: unknown[]): ReviewStatement[] {
   const ranked = [...statements].sort((a, b) => {
     const rankValue = (item: unknown) => isRecord(item) && item.rank === 'preferred' ? 0 : 1;
     return rankValue(a) - rankValue(b);
   });
+  const result: ReviewStatement[] = [];
+  const seenIssuers = new Set<string>();
 
   for (const statement of ranked) {
     if (isRecord(statement) && statement.rank === 'deprecated') continue;
     const parsed = parseNumericScore(statementValue(statement));
     if (!parsed) continue;
-    return { parsed, issuerId: issuerId(statement) };
+    const issuer = issuerId(statement);
+    const key = issuer ?? '__wikidata__';
+    if (seenIssuers.has(key)) continue;
+    seenIssuers.add(key);
+    result.push({ parsed, issuerId: issuer });
   }
-  return null;
+  return result;
+}
+
+function canonicalSourceName(label: string | null): string {
+  if (!label) return 'Wikidata';
+  const normalized = label.trim();
+  const lower = normalized.toLocaleLowerCase();
+  if (lower === 'internet movie database' || lower === 'imdb') return 'IMDb';
+  if (lower === 'rotten tomatoes') return 'Rotten Tomatoes';
+  if (lower === 'kinopoisk' || lower === 'kinopoisk.ru' || lower === 'киноПоиск'.toLocaleLowerCase()) return 'Kinopoisk';
+  if (lower === 'metacritic') return 'Metacritic';
+  return normalized;
+}
+
+function ratingSourceName(rating: RatingValue): string {
+  return rating.source.replace(/ via Wikidata$/, '');
+}
+
+function compareRatings(a: RatingValue, b: RatingValue): number {
+  const aName = ratingSourceName(a);
+  const bName = ratingSourceName(b);
+  const aPriority = SOURCE_PRIORITY.get(aName) ?? 100;
+  const bPriority = SOURCE_PRIORITY.get(bName) ?? 100;
+  if (aPriority !== bPriority) return aPriority - bPriority;
+  return aName.localeCompare(bName);
 }
 
 function entityFromPayload(payload: unknown, id: string): Record<string, unknown> {
@@ -418,7 +459,7 @@ export class WikidataPublicRatingsProvider {
     this.apiBaseUrl = options.apiBaseUrl ?? DEFAULT_API_BASE_URL;
   }
 
-  async getRating(candidate: CatalogCandidate): Promise<RatingValue> {
+  async getRatings(candidate: CatalogCandidate): Promise<RatingValue[]> {
     if (!ITEM_ID.test(candidate.providerId)) {
       throw new WikidataProviderError('invalid_candidate');
     }
@@ -429,23 +470,54 @@ export class WikidataPublicRatingsProvider {
       throw new WikidataProviderError('rating_unavailable');
     }
 
-    const chosen = chooseReviewStatement(claims.P444);
-    if (!chosen) throw new WikidataProviderError('rating_unavailable');
+    const reviews = reviewStatements(claims.P444);
+    if (reviews.length === 0) throw new WikidataProviderError('rating_unavailable');
 
-    const issuer = chosen.issuerId ? await this.getEnglishLabel(chosen.issuerId) : null;
-    return {
-      source: issuer ? `${issuer} via Wikidata` : 'Wikidata',
-      value: chosen.parsed.value,
-      scale: chosen.parsed.scale,
-      url: `https://www.wikidata.org/wiki/${candidate.providerId}`
-    };
+    const issuerIds = [...new Set(reviews.flatMap((review) => review.issuerId ? [review.issuerId] : []))];
+    const labels = await this.getEnglishLabels(issuerIds);
+    const ratings = reviews.map((review): RatingValue => {
+      const sourceName = canonicalSourceName(review.issuerId ? labels.get(review.issuerId) ?? null : null);
+      return {
+        source: sourceName === 'Wikidata' ? sourceName : `${sourceName} via Wikidata`,
+        value: review.parsed.value,
+        scale: review.parsed.scale,
+        url: `https://www.wikidata.org/wiki/${candidate.providerId}`
+      };
+    });
+
+    return ratings.sort(compareRatings);
   }
 
-  private async getEnglishLabel(id: string): Promise<string | null> {
-    const entity = await this.getEntity(id, 'labels');
-    if (!isRecord(entity.labels) || !isRecord(entity.labels.en)) return null;
-    const value = entity.labels.en.value;
-    return typeof value === 'string' && value.trim() ? value.trim() : null;
+  async getRating(candidate: CatalogCandidate): Promise<RatingValue> {
+    const ratings = await this.getRatings(candidate);
+    const first = ratings[0];
+    if (!first) throw new WikidataProviderError('rating_unavailable');
+    return first;
+  }
+
+  private async getEnglishLabels(ids: string[]): Promise<Map<string, string>> {
+    if (ids.length === 0) return new Map();
+
+    const url = new URL(this.apiBaseUrl);
+    url.searchParams.set('action', 'wbgetentities');
+    url.searchParams.set('ids', ids.join('|'));
+    url.searchParams.set('props', 'labels');
+    url.searchParams.set('languages', 'en');
+    url.searchParams.set('format', 'json');
+    url.searchParams.set('origin', '*');
+    const payload = await this.client.getJson(url);
+    if (!isRecord(payload) || !isRecord(payload.entities)) {
+      throw new WikidataProviderError('invalid_response');
+    }
+
+    const result = new Map<string, string>();
+    for (const id of ids) {
+      const entity = payload.entities[id];
+      if (!isRecord(entity)) continue;
+      const label = englishValue(entity.labels);
+      if (label) result.set(id, label);
+    }
+    return result;
   }
 
   private async getEntity(id: string, props: 'claims' | 'labels'): Promise<Record<string, unknown>> {

@@ -110,6 +110,78 @@ describe('Wikidata public providers', () => {
     expect(fetchFn).toHaveBeenCalledTimes(2);
   });
 
+  it('returns multiple issuer ratings in product priority order with one label batch', async () => {
+    const fetchFn = vi.fn(async (input: RequestInfo | URL) => {
+      const url = new URL(String(input));
+      const ids = url.searchParams.get('ids');
+      if (ids === 'Q109228991') {
+        return jsonResponse({
+          entities: {
+            Q109228991: {
+              id: 'Q109228991',
+              claims: {
+                P444: [
+                  {
+                    rank: 'preferred',
+                    mainsnak: { datavalue: { value: '79/100' } },
+                    qualifiers: { P447: [{ datavalue: { value: { id: 'Q101' } } }] }
+                  },
+                  {
+                    rank: 'normal',
+                    mainsnak: { datavalue: { value: '92%' } },
+                    qualifiers: { P447: [{ datavalue: { value: { id: 'Q102' } } }] }
+                  },
+                  {
+                    rank: 'normal',
+                    mainsnak: { datavalue: { value: '8.4/10' } },
+                    qualifiers: { P447: [{ datavalue: { value: { id: 'Q103' } } }] }
+                  },
+                  {
+                    rank: 'normal',
+                    mainsnak: { datavalue: { value: '8.6/10' } },
+                    qualifiers: { P447: [{ datavalue: { value: { id: 'Q104' } } }] }
+                  },
+                  {
+                    rank: 'deprecated',
+                    mainsnak: { datavalue: { value: '70%' } },
+                    qualifiers: { P447: [{ datavalue: { value: { id: 'Q102' } } }] }
+                  }
+                ]
+              }
+            }
+          }
+        });
+      }
+      if (ids === 'Q101|Q102|Q103|Q104') {
+        return jsonResponse({
+          entities: {
+            Q101: { labels: { en: { value: 'Metacritic' } } },
+            Q102: { labels: { en: { value: 'Rotten Tomatoes' } } },
+            Q103: { labels: { en: { value: 'Internet Movie Database' } } },
+            Q104: { labels: { en: { value: 'Kinopoisk' } } }
+          }
+        });
+      }
+      throw new Error(`unexpected_ids:${ids}`);
+    });
+
+    const provider = new WikidataPublicRatingsProvider({ fetchFn, apiBaseUrl });
+    const result = await provider.getRatings({
+      providerId: 'Q109228991',
+      mediaType: 'movie',
+      title: 'Dune: Part Two',
+      releaseYear: 2024
+    });
+
+    expect(result).toEqual([
+      { source: 'Kinopoisk via Wikidata', value: 8.6, scale: 10, url: 'https://www.wikidata.org/wiki/Q109228991' },
+      { source: 'IMDb via Wikidata', value: 8.4, scale: 10, url: 'https://www.wikidata.org/wiki/Q109228991' },
+      { source: 'Rotten Tomatoes via Wikidata', value: 92, scale: 100, url: 'https://www.wikidata.org/wiki/Q109228991' },
+      { source: 'Metacritic via Wikidata', value: 79, scale: 100, url: 'https://www.wikidata.org/wiki/Q109228991' }
+    ]);
+    expect(fetchFn).toHaveBeenCalledTimes(2);
+  });
+
   it('accepts percent and decimal-over-ten score formats', async () => {
     const responses = [
       { score: '92%', expected: { value: 92, scale: 100 } },

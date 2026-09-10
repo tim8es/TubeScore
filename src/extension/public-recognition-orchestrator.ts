@@ -50,8 +50,7 @@ export function createPublicRecognitionOrchestrator(
   const resultForVisibleScore = async (score: MatchScore): Promise<RecognitionResult> => {
     const decision = decideMatch(score);
     try {
-      const rating = await ratings.getRating(score.candidate);
-      return { decision, ratings: [rating] };
+      return { decision, ratings: await ratings.getRatings(score.candidate) };
     } catch (error) {
       if (error instanceof WikidataProviderError && error.code === 'rating_unavailable') {
         return { decision, ratings: [] };

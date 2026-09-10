@@ -29,6 +29,23 @@ describe('renderRatingCard', () => {
     expect(card.textContent).toContain('TMDB 8.1/10');
   });
 
+  it('renders multiple rating sources in the supplied priority order', () => {
+    const card = renderRatingCard({
+      ...base,
+      ratings: [
+        { source: 'IMDb via Wikidata', value: 8.4, scale: 10 },
+        { source: 'Rotten Tomatoes via Wikidata', value: 92, scale: 100 },
+        { source: 'Metacritic via Wikidata', value: 79, scale: 100 }
+      ]
+    });
+
+    expect(Array.from(card.querySelectorAll('.tubescore-card__rating')).map((item) => item.textContent)).toEqual([
+      'IMDb via Wikidata 8.4/10',
+      'Rotten Tomatoes via Wikidata 92/100',
+      'Metacritic via Wikidata 79/100'
+    ]);
+  });
+
   it('labels likely matches instead of presenting them as certain', () => {
     const card = renderRatingCard({
       ...base,
