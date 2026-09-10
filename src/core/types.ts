@@ -42,3 +42,7 @@ export interface RecognitionResult {
   decision: MatchDecision;
   ratings: RatingValue[];
 }
+
+export interface RecognitionOptions {
+  enabledSources?: readonly string[];
+}

@@ -25,10 +25,13 @@ describe('Chrome extension manifest', () => {
     ]);
   });
 
-  it('requires no extension permissions and only the zero-token Wikidata host', () => {
-    expect(manifest.permissions ?? []).toEqual([]);
+  it('uses only local storage plus the zero-token Wikidata host', () => {
+    expect(manifest.permissions ?? []).toEqual(['storage']);
+    expect(manifest.permissions).not.toContain('tabs');
+    expect(manifest.permissions).not.toContain('history');
+    expect(manifest.permissions).not.toContain('cookies');
     expect(manifest.host_permissions).toEqual(['https://www.wikidata.org/*']);
-    expect(JSON.stringify(manifest)).not.toContain('imdb');
+    expect(JSON.stringify(manifest)).not.toContain('imdb.com');
   });
 
   it('does not expose developer bootstrap or web-accessible resources in the source manifest', () => {

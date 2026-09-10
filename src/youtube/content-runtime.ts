@@ -1,17 +1,25 @@
-import type { RecognitionResult, YouTubeVideoContext } from '../core/types';
+import type { RecognitionOptions, RecognitionResult, YouTubeVideoContext } from '../core/types';
+import { DEFAULT_ENABLED_RATING_SOURCES, normalizeEnabledRatingSources } from '../core/rating-sources';
 import { renderRatingCard, renderUnavailableCard } from '../ui/rating-card';
 import { extractYouTubeVideoContext } from './metadata';
 
 export interface YouTubeContentRuntimeOptions {
-  recognize(context: YouTubeVideoContext): Promise<RecognitionResult | null>;
+  recognize(
+    context: YouTubeVideoContext,
+    options?: RecognitionOptions
+  ): Promise<RecognitionResult | null>;
+  enabledSources?: readonly string[];
+  onEnabledSourcesChange?(sources: string[]): void | Promise<void>;
   document?: Document;
   window?: Window;
 }
 
 export class YouTubeContentRuntime {
   private readonly recognize: YouTubeContentRuntimeOptions['recognize'];
+  private readonly onEnabledSourcesChange?: YouTubeContentRuntimeOptions['onEnabledSourcesChange'];
   private readonly document: Document;
   private readonly window: Window;
+  private enabledSources: string[];
   private generation = 0;
   private lastVideoId: string | null = null;
   private currentTask: Promise<void> = Promise.resolve();
@@ -20,6 +28,10 @@ export class YouTubeContentRuntime {
 
   constructor(options: YouTubeContentRuntimeOptions) {
     this.recognize = options.recognize;
+    this.enabledSources = normalizeEnabledRatingSources(
+      options.enabledSources ?? DEFAULT_ENABLED_RATING_SOURCES
+    );
+    this.onEnabledSourcesChange = options.onEnabledSourcesChange;
     this.document = options.document ?? document;
     this.window = options.window ?? window;
   }
@@ -52,6 +64,14 @@ export class YouTubeContentRuntime {
     this.scheduleRecognition();
   };
 
+  private readonly handleEnabledSourcesChange = (sources: string[]): void => {
+    this.enabledSources = normalizeEnabledRatingSources(sources);
+    if (this.onEnabledSourcesChange) {
+      void Promise.resolve(this.onEnabledSourcesChange([...this.enabledSources])).catch(() => undefined);
+    }
+    if (this.started) this.scheduleRecognition(true);
+  };
+
   private armMetadataObserver(): void {
     this.disarmMetadataObserver();
 
@@ -78,7 +98,7 @@ export class YouTubeContentRuntime {
     this.metadataObserver = null;
   }
 
-  private scheduleRecognition(): void {
+  private scheduleRecognition(force = false): void {
     const context = extractYouTubeVideoContext(this.document, this.window.location);
     if (!context) {
       if (this.window.location.pathname === '/watch') {
@@ -102,18 +122,22 @@ export class YouTubeContentRuntime {
 
     this.disarmMetadataObserver();
 
-    if (context.videoId === this.lastVideoId) {
+    if (!force && context.videoId === this.lastVideoId) {
       return;
     }
 
     const runId = ++this.generation;
     this.removeCard();
     this.lastVideoId = context.videoId;
-    this.currentTask = this.recognize(context)
+    const recognitionOptions: RecognitionOptions = { enabledSources: [...this.enabledSources] };
+    this.currentTask = this.recognize(context, recognitionOptions)
       .then((result) => {
         if (!this.isCurrentRequest(runId, context.videoId) || !result) return;
 
-        const card = renderRatingCard(result);
+        const card = renderRatingCard(result, {
+          enabledSources: this.enabledSources,
+          onEnabledSourcesChange: this.handleEnabledSourcesChange
+        });
         if (card.hidden) return;
         this.mountCard(card);
       })

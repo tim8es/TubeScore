@@ -1,7 +1,15 @@
 import { scoreCandidate } from '../core/candidate-scorer';
 import { decideMatch } from '../core/match-decision';
 import { buildSearchQueries } from '../core/query-builder';
-import type { CatalogCandidate, MatchScore, RecognitionResult, YouTubeVideoContext } from '../core/types';
+import { filterRatingsBySources } from '../core/rating-sources';
+import type {
+  CatalogCandidate,
+  MatchScore,
+  RecognitionOptions,
+  RecognitionResult,
+  YouTubeVideoContext
+} from '../core/types';
+import { enrichWikidataRatingUrls } from '../providers/wikidata/wikidata-platform-links';
 import {
   WikidataApiClient,
   WikidataProviderError,
@@ -38,7 +46,10 @@ function withExactYouTubeIdEvidence(score: MatchScore): MatchScore {
 
 export function createPublicRecognitionOrchestrator(
   options: PublicRecognitionOrchestratorOptions = {}
-): (context: YouTubeVideoContext) => Promise<RecognitionResult | null> {
+): (
+  context: YouTubeVideoContext,
+  recognitionOptions?: RecognitionOptions
+) => Promise<RecognitionResult | null> {
   const client = new WikidataApiClient(options.fetchFn ? { fetchFn: options.fetchFn } : {});
   const providerOptions = {
     client,
@@ -47,10 +58,28 @@ export function createPublicRecognitionOrchestrator(
   const catalog = new WikidataPublicCatalogProvider(providerOptions);
   const ratings = new WikidataPublicRatingsProvider(providerOptions);
 
-  const resultForVisibleScore = async (score: MatchScore): Promise<RecognitionResult> => {
+  const resultForVisibleScore = async (
+    score: MatchScore,
+    recognitionOptions?: RecognitionOptions
+  ): Promise<RecognitionResult> => {
     const decision = decideMatch(score);
+    const enabledSources = recognitionOptions?.enabledSources;
+    if (enabledSources?.length === 0) return { decision, ratings: [] };
+
     try {
-      return { decision, ratings: await ratings.getRatings(score.candidate) };
+      const available = await ratings.getRatings(score.candidate);
+      const enriched = await enrichWikidataRatingUrls(
+        score.candidate,
+        available,
+        client,
+        options.apiBaseUrl
+      );
+      return {
+        decision,
+        ratings: enabledSources === undefined
+          ? enriched
+          : filterRatingsBySources(enriched, enabledSources)
+      };
     } catch (error) {
       if (error instanceof WikidataProviderError && error.code === 'rating_unavailable') {
         return { decision, ratings: [] };
@@ -59,12 +88,12 @@ export function createPublicRecognitionOrchestrator(
     }
   };
 
-  return async (context) => {
+  return async (context, recognitionOptions) => {
     let bestHidden: MatchScore | null = null;
 
     const exactScore = bestScore(context, await catalog.searchByYouTubeVideoId(context.videoId));
     if (exactScore) {
-      return resultForVisibleScore(withExactYouTubeIdEvidence(exactScore));
+      return resultForVisibleScore(withExactYouTubeIdEvidence(exactScore), recognitionOptions);
     }
 
     for (const query of buildSearchQueries(context)) {
@@ -80,7 +109,7 @@ export function createPublicRecognitionOrchestrator(
         continue;
       }
 
-      return resultForVisibleScore(score);
+      return resultForVisibleScore(score, recognitionOptions);
     }
 
     if (bestHidden) {
