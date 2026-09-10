@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { WikidataPublicRatingsProvider } from '../../src/providers/wikidata/wikidata-public-provider';
+import { WikidataLinkedRatingsProvider } from '../../src/providers/wikidata/wikidata-linked-ratings-provider';
 
 function jsonResponse(payload: unknown): Response {
   return new Response(JSON.stringify(payload), {
@@ -50,7 +50,7 @@ describe('Wikidata rating platform links', () => {
       throw new Error(`unexpected_ids:${ids}`);
     });
 
-    const provider = new WikidataPublicRatingsProvider({
+    const provider = new WikidataLinkedRatingsProvider({
       fetchFn,
       apiBaseUrl: 'https://www.wikidata.org/w/api.php'
     });
