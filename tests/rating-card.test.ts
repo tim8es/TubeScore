@@ -100,6 +100,8 @@ describe('renderRatingCard', () => {
     const style = document.querySelector('style[data-tubescore-styles]')?.textContent ?? '';
     expect(style).toContain('a.tubescore-card__rating:hover');
     expect(style).toContain('a.tubescore-card__rating:focus-visible');
+    expect(style).toContain('--tubescore-surface: #f2f2f2');
+    expect(style).toContain('html[dark] .tubescore-card');
   });
 
   it('does not turn a Wikidata provenance URL into a fake platform link', () => {
