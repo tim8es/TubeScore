@@ -26,6 +26,13 @@ const BRAND_SPECS: Record<string, BrandSpec> = {
   }
 };
 
+const PLATFORM_HOSTS: Record<string, ReadonlySet<string>> = {
+  IMDb: new Set(['imdb.com', 'www.imdb.com']),
+  'Rotten Tomatoes': new Set(['rottentomatoes.com', 'www.rottentomatoes.com']),
+  Metacritic: new Set(['metacritic.com', 'www.metacritic.com']),
+  Kinopoisk: new Set(['kinopoisk.ru', 'www.kinopoisk.ru'])
+};
+
 const STYLES = `
 .tubescore-card {
   box-sizing: border-box;
@@ -75,13 +82,13 @@ const STYLES = `
   transition: background-color 120ms ease, border-color 120ms ease, box-shadow 120ms ease, transform 120ms ease;
 }
 a.tubescore-card__rating { cursor: pointer; }
-.tubescore-card__rating:hover {
+a.tubescore-card__rating:hover {
   background: rgba(255, 255, 255, .11);
   border-color: rgba(255, 255, 255, .18);
   box-shadow: 0 2px 8px rgba(0, 0, 0, .22);
   transform: translateY(-1px);
 }
-.tubescore-card__rating:focus-visible {
+a.tubescore-card__rating:focus-visible {
   outline: 2px solid #3ea6ff;
   outline-offset: 2px;
   border-color: transparent;
@@ -101,7 +108,7 @@ a.tubescore-card__rating { cursor: pointer; }
 }
 @media (prefers-reduced-motion: reduce) {
   .tubescore-card__rating { transition: none; }
-  .tubescore-card__rating:hover { transform: none; }
+  a.tubescore-card__rating:hover { transform: none; }
 }
 `;
 
@@ -121,11 +128,13 @@ function formatRatingValue(value: number, scale: number): string {
   return `${formatNumber(value)}/${formatNumber(scale)}`;
 }
 
-function safeHttpsUrl(value: string | undefined): string | null {
+function safePlatformUrl(name: string, value: string | undefined): string | null {
   if (!value) return null;
+  const hosts = PLATFORM_HOSTS[name];
+  if (!hosts) return null;
   try {
     const url = new URL(value);
-    return url.protocol === 'https:' ? url.href : null;
+    return url.protocol === 'https:' && hosts.has(url.hostname.toLowerCase()) ? url.href : null;
   } catch {
     return null;
   }
@@ -175,16 +184,17 @@ function arrowIcon(doc: Document): HTMLElement {
 
 function ratingBadge(doc: Document, rating: RatingValue): HTMLElement {
   const name = sourceName(rating.source);
-  const destination = safeHttpsUrl(rating.url);
+  const destination = safePlatformUrl(name, rating.url);
   const item = destination ? doc.createElement('a') : doc.createElement('span');
   item.className = 'tubescore-card__rating';
   item.style.setProperty('--tubescore-brand', BRAND_SPECS[name]?.color ?? '#aaa');
 
-  if (item instanceof HTMLAnchorElement && destination) {
-    item.href = destination;
-    item.target = '_blank';
-    item.rel = 'noopener noreferrer';
-    item.setAttribute('aria-label', `${name} ${formatNumber(rating.value)} out of ${formatNumber(rating.scale)} — open on ${name}`);
+  if (destination && item.tagName === 'A') {
+    const link = item as HTMLAnchorElement;
+    link.href = destination;
+    link.target = '_blank';
+    link.rel = 'noopener noreferrer';
+    link.setAttribute('aria-label', `${name} ${formatNumber(rating.value)} out of ${formatNumber(rating.scale)} — open on ${name}`);
   } else {
     item.setAttribute('aria-label', `${name} ${formatNumber(rating.value)} out of ${formatNumber(rating.scale)}`);
   }
@@ -208,7 +218,7 @@ function stopYouTubeInteractionLeak(card: HTMLElement): void {
   }
 }
 
-function brandHeader(doc: Document, likely = false): HTMLElement {
+function brandHeader(doc: Document, suffix?: 'Likely' | 'Unavailable'): HTMLElement {
   const header = doc.createElement('div');
   header.className = 'tubescore-card__brand';
 
@@ -218,7 +228,7 @@ function brandHeader(doc: Document, likely = false): HTMLElement {
   for (let i = 0; i < 4; i += 1) mark.append(doc.createElement('i'));
 
   const text = doc.createElement('span');
-  text.textContent = likely ? 'TubeScore · Likely' : 'TubeScore';
+  text.textContent = suffix ? `TubeScore · ${suffix}` : 'TubeScore';
   header.append(mark, text);
   return header;
 }
@@ -233,7 +243,7 @@ export function renderUnavailableCard(): HTMLElement {
 
   const summary = doc.createElement('div');
   summary.className = 'tubescore-card__summary';
-  summary.append(brandHeader(doc));
+  summary.append(brandHeader(doc, 'Unavailable'));
 
   const message = doc.createElement('span');
   message.className = 'tubescore-card__meta';
@@ -260,7 +270,7 @@ export function renderRatingCard(result: RecognitionResult): HTMLElement {
   const { candidate } = result.decision.score;
   const summary = doc.createElement('div');
   summary.className = 'tubescore-card__summary';
-  summary.append(brandHeader(doc, result.decision.state === 'likely'));
+  summary.append(brandHeader(doc, result.decision.state === 'likely' ? 'Likely' : undefined));
 
   const title = doc.createElement('strong');
   title.className = 'tubescore-card__title';
