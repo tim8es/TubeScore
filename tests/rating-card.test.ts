@@ -26,11 +26,11 @@ describe('renderRatingCard', () => {
     expect(card.textContent).toContain('Dune: Part Two');
     expect(card.textContent).toContain('2024');
     expect(card.textContent).toContain('Movie');
-    expect(card.textContent).toContain('TMDB');
-    expect(card.textContent).toContain('8.1/10');
+    expect(card.querySelector('.tubescore-card__rating-source')?.textContent).toBe('TMDB');
+    expect(card.querySelector('.tubescore-card__rating-value')?.textContent).toBe('8.1/10');
   });
 
-  it('renders multiple rating sources in the supplied priority order', () => {
+  it('renders multiple rating sources in the supplied priority order without provenance copy', () => {
     const card = renderRatingCard({
       ...base,
       ratings: [
@@ -40,11 +40,17 @@ describe('renderRatingCard', () => {
       ]
     });
 
-    expect(Array.from(card.querySelectorAll('.tubescore-card__rating')).map((item) => item.textContent?.replace(/\s+/g, ' ').trim())).toEqual([
-      'IMDb 8.4/10',
-      'Rotten Tomatoes 92/100',
-      'Metacritic 79/100'
+    expect(Array.from(card.querySelectorAll('.tubescore-card__rating-source')).map((item) => item.textContent)).toEqual([
+      'IMDb',
+      'Rotten Tomatoes',
+      'Metacritic'
     ]);
+    expect(Array.from(card.querySelectorAll('.tubescore-card__rating-value')).map((item) => item.textContent)).toEqual([
+      '8.4/10',
+      '92/100',
+      '79/100'
+    ]);
+    expect(card.textContent).not.toContain('via Wikidata');
   });
 
   it('labels likely matches instead of presenting them as certain', () => {
@@ -72,7 +78,8 @@ describe('renderRatingCard', () => {
     expect(badge?.rel).toContain('noopener');
     expect(badge?.rel).toContain('noreferrer');
     expect(badge?.getAttribute('aria-label')).toBe('IMDb 8.4 out of 10 — open on IMDb');
-    expect(badge?.textContent?.replace(/\s+/g, ' ').trim()).toBe('IMDb 8.4/10');
+    expect(badge?.querySelector('.tubescore-card__rating-source')?.textContent).toBe('IMDb');
+    expect(badge?.querySelector('.tubescore-card__rating-value')?.textContent).toBe('8.4/10');
     expect(badge?.querySelector('svg')?.getAttribute('aria-hidden')).toBe('true');
     expect(card.textContent).not.toContain('via Wikidata');
     expect(card.textContent).not.toContain('Fresh');
@@ -91,7 +98,21 @@ describe('renderRatingCard', () => {
     expect(leakedKeys).toBe(0);
 
     const style = document.querySelector('style[data-tubescore-styles]')?.textContent ?? '';
-    expect(style).toContain('.tubescore-card__rating:hover');
-    expect(style).toContain('.tubescore-card__rating:focus-visible');
+    expect(style).toContain('a.tubescore-card__rating:hover');
+    expect(style).toContain('a.tubescore-card__rating:focus-visible');
+  });
+
+  it('does not turn a Wikidata provenance URL into a fake platform link', () => {
+    const card = renderRatingCard({
+      ...base,
+      ratings: [{
+        source: 'IMDb via Wikidata',
+        value: 8.4,
+        scale: 10,
+        url: 'https://www.wikidata.org/wiki/Q109228991'
+      }]
+    });
+    expect(card.querySelector('.tubescore-card__rating')?.tagName).toBe('SPAN');
+    expect(card.querySelector('.tubescore-card__rating-arrow')).toBeNull();
   });
 });
