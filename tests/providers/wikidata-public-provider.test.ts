@@ -120,7 +120,10 @@ describe('Wikidata public providers', () => {
             Q109228991: {
               id: 'Q109228991',
               claims: {
-                P345: [{ rank: 'normal', mainsnak: { datavalue: { value: 'tt15239678' } } }],
+                P345: [
+                  { rank: 'normal', mainsnak: { datavalue: { value: 'tt0000000' } } },
+                  { rank: 'preferred', mainsnak: { datavalue: { value: 'tt15239678' } } }
+                ],
                 P1258: [{ rank: 'normal', mainsnak: { datavalue: { value: 'm/dune_part_two' } } }],
                 P1712: [{ rank: 'normal', mainsnak: { datavalue: { value: 'movie/dune-part-two' } } }],
                 P2603: [{ rank: 'normal', mainsnak: { datavalue: { value: '1234567' } } }],
