@@ -303,6 +303,50 @@ function statementValue(statement: unknown): string | null {
   return typeof datavalue.value === 'string' ? datavalue.value : null;
 }
 
+function firstClaimString(claims: Record<string, unknown>, property: string): string | null {
+  const statements = claims[property];
+  if (!Array.isArray(statements)) return null;
+  const ranked = [...statements].sort((a, b) => {
+    const rankValue = (item: unknown) => {
+      if (!isRecord(item)) return 1;
+      if (item.rank === 'preferred') return 0;
+      if (item.rank === 'deprecated') return 2;
+      return 1;
+    };
+    return rankValue(a) - rankValue(b);
+  });
+  for (const statement of ranked) {
+    if (isRecord(statement) && statement.rank === 'deprecated') continue;
+    const value = statementValue(statement)?.trim();
+    if (value) return value;
+  }
+  return null;
+}
+
+function platformTitleUrl(source: string, claims: Record<string, unknown>): string | null {
+  if (source === 'IMDb') {
+    const id = firstClaimString(claims, 'P345');
+    return id && /^tt\d{7,10}$/.test(id) ? `https://www.imdb.com/title/${id}/` : null;
+  }
+  if (source === 'Rotten Tomatoes') {
+    const id = firstClaimString(claims, 'P1258');
+    return id && /^(?:m|tv)\/[A-Za-z0-9][A-Za-z0-9_-]*$/.test(id)
+      ? `https://www.rottentomatoes.com/${id}`
+      : null;
+  }
+  if (source === 'Metacritic') {
+    const id = firstClaimString(claims, 'P1712');
+    return id && /^(?:movie|tv)\/[A-Za-z0-9][A-Za-z0-9-]*$/.test(id)
+      ? `https://www.metacritic.com/${id}`
+      : null;
+  }
+  if (source === 'Kinopoisk') {
+    const id = firstClaimString(claims, 'P2603');
+    return id && /^\d{1,10}$/.test(id) ? `https://www.kinopoisk.ru/film/${id}/` : null;
+  }
+  return null;
+}
+
 function issuerId(statement: unknown): string | null {
   if (!isRecord(statement) || !isRecord(statement.qualifiers)) return null;
   const values = statement.qualifiers.P447;
@@ -481,7 +525,7 @@ export class WikidataPublicRatingsProvider {
         source: sourceName === 'Wikidata' ? sourceName : `${sourceName} via Wikidata`,
         value: review.parsed.value,
         scale: review.parsed.scale,
-        url: `https://www.wikidata.org/wiki/${candidate.providerId}`
+        url: platformTitleUrl(sourceName, claims) ?? `https://www.wikidata.org/wiki/${candidate.providerId}`
       };
     });
 
