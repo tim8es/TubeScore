@@ -109,4 +109,35 @@ describe('TubeScore source settings UI', () => {
     ]);
     expect(panel?.hidden).toBe(true);
   });
+
+  it('keeps the gear in the metadata row and renders readable source rows with branded vectors', () => {
+    const card = renderWithOptions(result);
+    const metaRow = card.querySelector('.tubescore-card__meta-row');
+    const gear = card.querySelector('.tubescore-card__settings-button');
+    expect(metaRow).not.toBeNull();
+    expect(metaRow?.contains(gear)).toBe(true);
+
+    gear?.dispatchEvent(new Event('click', { bubbles: true }));
+    const rows = Array.from(card.querySelectorAll<HTMLElement>('.tubescore-card__source-row'));
+    expect(rows.length).toBeGreaterThanOrEqual(6);
+    for (const row of rows) {
+      expect(row.children[0]?.classList.contains('tubescore-card__source-checkbox')).toBe(true);
+      expect(row.children[1]?.classList.contains('tubescore-card__rating-icon')).toBe(true);
+      expect(row.children[2]?.classList.contains('tubescore-card__source-name')).toBe(true);
+    }
+
+    for (const name of ['Kinopoisk', 'IMDb', 'Rotten Tomatoes', 'Metacritic']) {
+      const icon = card.querySelector<HTMLElement>(`.tubescore-card__rating-icon[data-brand-source="${name}"]`);
+      expect(icon).not.toBeNull();
+      expect(icon?.querySelector('path')).not.toBeNull();
+      expect(icon?.querySelector('text')).toBeNull();
+    }
+
+    const style = document.querySelector('style[data-tubescore-styles]')?.textContent ?? '';
+    expect(style).toContain('grid-template-columns: 20px 28px minmax(0, 1fr)');
+    expect(style).toContain('.tubescore-card__source-row .tubescore-card__rating-icon { grid-area: auto;');
+    expect(style).toContain('top: calc(100% + 8px)');
+    expect(style).toContain('left: 0');
+    expect(style).toContain('.tubescore-card__source-name { overflow: visible;');
+  });
 });
