@@ -14,6 +14,7 @@ export interface CatalogCandidate {
   mediaType: MediaType;
   title: string;
   originalTitle?: string;
+  aliases?: string[];
   releaseYear?: number;
 }
 
