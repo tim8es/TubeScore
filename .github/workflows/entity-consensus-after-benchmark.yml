@@ -1,0 +1,23 @@
+name: Entity consensus candidate benchmark
+
+on:
+  push:
+    branches:
+      - benchmark/entity-consensus-after-v031
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install --no-audit --no-fund
+      - name: Run targeted candidate regressions
+        run: npx vitest run tests/extension/entity-consensus.test.ts --reporter=verbose
+      - name: Prepare identical affected benchmark harness
+        run: curl -fsSL https://raw.githubusercontent.com/tim8es/TubeScore/benchmark/entity-consensus-baseline-v031/benchmarks/entity-consensus-affected-benchmark.test.ts -o tests/entity-consensus-affected-benchmark.test.ts
+      - name: Run affected benchmark
+        run: npx vitest run tests/entity-consensus-affected-benchmark.test.ts --reporter=verbose
