@@ -23,7 +23,7 @@ function normalizedLanguage(language: string): string {
 function classifyDescription(description: string): CatalogCandidate['mediaType'] | null {
   const value = description.normalize('NFKC').toLowerCase();
 
-  if (/\b(?:film|movie|filme)\b/u.test(value)) return 'movie';
+  if (/\b(?:film|movie|filme|filmi)\b/u.test(value)) return 'movie';
   if (/(?:фильм|фільм|película)/u.test(value)) return 'movie';
   if (/(?:映画|영화|电影|電影)/u.test(value)) return 'movie';
 
