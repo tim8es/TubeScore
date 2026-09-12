@@ -1,5 +1,6 @@
 import { scoreCandidate } from '../core/candidate-scorer';
 import { decideMatch } from '../core/match-decision';
+import { extractFourDigitYear } from '../core/normalize';
 import { buildLocalizedSearchRequests } from '../core/query-builder';
 import { filterRatingsBySources } from '../core/rating-sources';
 import type {
@@ -25,6 +26,12 @@ export interface PublicRecognitionOrchestratorOptions {
   apiBaseUrl?: string;
 }
 
+interface CandidateConsensus {
+  bestScore: MatchScore;
+  supports: Set<string>;
+  yearMatched: boolean;
+}
+
 function bestScore(
   context: YouTubeVideoContext,
   candidates: CatalogCandidate[]
@@ -43,6 +50,37 @@ function withExactYouTubeIdEvidence(score: MatchScore): MatchScore {
     confidence: Math.max(score.confidence, 0.95),
     reasons: [...new Set([...score.reasons, 'youtube-video-id-match'])]
   };
+}
+
+function explicitContextYear(context: YouTubeVideoContext): number | undefined {
+  return extractFourDigitYear(context.title) ?? extractFourDigitYear(context.description);
+}
+
+function requestKey(query: string, language: string): string {
+  return `${language.trim().toLowerCase()}\u0000${query.trim().toLowerCase()}`;
+}
+
+function hiddenResult(score: MatchScore): RecognitionResult {
+  return {
+    decision: { state: 'hidden', score },
+    ratings: []
+  };
+}
+
+function compareConsensus(a: CandidateConsensus, b: CandidateConsensus): number {
+  const supportDifference = b.supports.size - a.supports.size;
+  if (supportDifference !== 0) return supportDifference;
+
+  const yearDifference = Number(b.yearMatched) - Number(a.yearMatched);
+  if (yearDifference !== 0) return yearDifference;
+
+  return b.bestScore.confidence - a.bestScore.confidence;
+}
+
+function consensusTie(a: CandidateConsensus, b: CandidateConsensus): boolean {
+  return a.supports.size === b.supports.size
+    && a.yearMatched === b.yearMatched
+    && a.bestScore.confidence === b.bestScore.confidence;
 }
 
 export function createPublicRecognitionOrchestrator(
@@ -91,32 +129,74 @@ export function createPublicRecognitionOrchestrator(
   };
 
   return async (context, recognitionOptions) => {
-    let bestHidden: MatchScore | null = null;
-
     const exactScore = bestScore(context, await exactCatalog.searchByYouTubeVideoId(context.videoId));
     if (exactScore) {
       return resultForVisibleScore(withExactYouTubeIdEvidence(exactScore), recognitionOptions);
     }
 
-    for (const request of buildLocalizedSearchRequests(context)) {
+    const requests = buildLocalizedSearchRequests(context);
+    if (requests.length === 0) return null;
+
+    const contextYear = explicitContextYear(context);
+    const consensusByProvider = new Map<string, CandidateConsensus>();
+    let bestFallback: MatchScore | null = null;
+
+    for (const request of requests) {
       const candidates = await titleCatalog.search(request.query, request.language);
       const score = bestScore(context, candidates);
       if (!score) continue;
 
+      if (bestFallback === null || score.confidence > bestFallback.confidence) {
+        bestFallback = score;
+      }
+
       const decision = decideMatch(score);
-      if (decision.state === 'hidden') {
-        if (bestHidden === null || score.confidence > bestHidden.confidence) {
-          bestHidden = score;
-        }
+      if (decision.state === 'hidden') continue;
+
+      if (
+        contextYear !== undefined
+        && score.candidate.releaseYear !== undefined
+        && score.candidate.releaseYear !== contextYear
+      ) {
         continue;
       }
 
-      return resultForVisibleScore(score, recognitionOptions);
+      const providerId = score.candidate.providerId;
+      const existing = consensusByProvider.get(providerId);
+      const support = requestKey(request.query, request.language);
+      if (!existing) {
+        consensusByProvider.set(providerId, {
+          bestScore: score,
+          supports: new Set([support]),
+          yearMatched: score.reasons.includes('year-match')
+        });
+        continue;
+      }
+
+      existing.supports.add(support);
+      existing.yearMatched ||= score.reasons.includes('year-match');
+      if (score.confidence > existing.bestScore.confidence) {
+        existing.bestScore = score;
+      }
     }
 
-    if (bestHidden) {
-      return { decision: decideMatch(bestHidden), ratings: [] };
+    const qualified = [...consensusByProvider.values()]
+      .filter((entry) => {
+        if (contextYear !== undefined) {
+          return entry.yearMatched && entry.supports.size >= 2;
+        }
+        if (requests.length === 1) return entry.supports.size === 1;
+        return entry.supports.size >= 2;
+      })
+      .sort(compareConsensus);
+
+    if (qualified.length > 0) {
+      if (qualified.length > 1 && consensusTie(qualified[0], qualified[1])) {
+        return bestFallback ? hiddenResult(bestFallback) : null;
+      }
+      return resultForVisibleScore(qualified[0].bestScore, recognitionOptions);
     }
-    return null;
+
+    return bestFallback ? hiddenResult(bestFallback) : null;
   };
 }
