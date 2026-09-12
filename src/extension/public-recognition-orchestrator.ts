@@ -1,6 +1,6 @@
 import { scoreCandidate } from '../core/candidate-scorer';
 import { decideMatch } from '../core/match-decision';
-import { buildSearchQueries } from '../core/query-builder';
+import { buildLocalizedSearchRequests } from '../core/query-builder';
 import { filterRatingsBySources } from '../core/rating-sources';
 import type {
   CatalogCandidate,
@@ -9,6 +9,7 @@ import type {
   RecognitionResult,
   YouTubeVideoContext
 } from '../core/types';
+import { WikidataMultilingualCatalogProvider } from '../providers/wikidata/wikidata-multilingual-catalog';
 import { enrichWikidataRatingUrls } from '../providers/wikidata/wikidata-platform-links';
 import {
   WikidataApiClient,
@@ -55,7 +56,8 @@ export function createPublicRecognitionOrchestrator(
     client,
     ...(options.apiBaseUrl ? { apiBaseUrl: options.apiBaseUrl } : {})
   };
-  const catalog = new WikidataPublicCatalogProvider(providerOptions);
+  const exactCatalog = new WikidataPublicCatalogProvider(providerOptions);
+  const titleCatalog = new WikidataMultilingualCatalogProvider(providerOptions);
   const ratings = new WikidataPublicRatingsProvider(providerOptions);
 
   const resultForVisibleScore = async (
@@ -91,13 +93,13 @@ export function createPublicRecognitionOrchestrator(
   return async (context, recognitionOptions) => {
     let bestHidden: MatchScore | null = null;
 
-    const exactScore = bestScore(context, await catalog.searchByYouTubeVideoId(context.videoId));
+    const exactScore = bestScore(context, await exactCatalog.searchByYouTubeVideoId(context.videoId));
     if (exactScore) {
       return resultForVisibleScore(withExactYouTubeIdEvidence(exactScore), recognitionOptions);
     }
 
-    for (const query of buildSearchQueries(context)) {
-      const candidates = await catalog.search(query);
+    for (const request of buildLocalizedSearchRequests(context)) {
+      const candidates = await titleCatalog.search(request.query, request.language);
       const score = bestScore(context, candidates);
       if (!score) continue;
 
