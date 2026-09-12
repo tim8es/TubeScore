@@ -39,6 +39,28 @@ describe('scoreCandidate', () => {
     expect(score.reasons).toContain('year-mismatch');
   });
 
+  it('keeps an old exact-title Russian candidate hidden when the trailer states a newer year', () => {
+    const russianContext: YouTubeVideoContext = {
+      videoId: 'tTtftyuS680',
+      title: 'Моана — Русский трейлер (Дубляж, 2026) Дуэйн Джонсон',
+      description: '',
+      channelName: 'Live benchmark',
+      hashtags: [],
+      url: 'https://www.youtube.com/watch?v=tTtftyuS680'
+    };
+
+    const score = scoreCandidate(russianContext, {
+      providerId: 'Q18647981',
+      mediaType: 'movie',
+      title: 'Моана',
+      releaseYear: 2016
+    });
+
+    expect(score.confidence).toBeLessThan(0.75);
+    expect(score.reasons).toContain('title-match');
+    expect(score.reasons).toContain('year-mismatch');
+  });
+
   it('matches the candidate release year when a historical year appears earlier in the description', () => {
     const realDuneContext: YouTubeVideoContext = {
       videoId: 'Way9Dexny3w',
