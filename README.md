@@ -23,7 +23,7 @@ TMDB and IMDb code retained in the repository is legacy/fallback/reference code 
 - Trailers, teasers, clips, and reviews when the title can be identified confidently from page metadata.
 - Wikidata movie/TV matching and review-score display when usable `P444` statements exist.
 - Compact two-column overlay with a title block clamped to three lines and a responsive rating-card grid.
-- Inline source settings opened from the icon-only gear button; the selection persists locally and is passed into recognition so disabled sources are filtered before display.
+- Inline source settings opened from the icon-only gear button in the metadata row; the selection persists locally and is passed into recognition so disabled sources are filtered before display.
 - Direct title links when Wikidata exposes a validated exact platform ID; unsupported/fallback provenance URLs are not presented as fake platform links.
 - High/likely/hidden confidence decisions; false negatives are preferred over confident false positives.
 - Generic non-blocking error state when the public data source is unavailable.
@@ -66,6 +66,11 @@ The generated directory contains:
 
 ```text
 dist/
+  assets/
+    icon16.png
+    icon32.png
+    icon48.png
+    icon128.png
   manifest.json
   content-script.js
   service-worker.js
@@ -73,7 +78,7 @@ dist/
 
 ## Rating-source settings
 
-The gear button in the lower-left of the TubeScore card opens the source drawer. By default only these sources are enabled:
+The gear button in the TubeScore metadata row opens the source drawer. By default only these sources are enabled:
 
 - Kinopoisk
 - IMDb
@@ -110,6 +115,12 @@ Host access is limited to:
 - `https://www.wikidata.org/*` — official Wikidata Action API and entity pages.
 
 Direct rating-card links do not require additional host permissions. The content script is matched only on `https://www.youtube.com/*`; this broad path is required because YouTube performs SPA navigation between watch pages without full page reloads.
+
+## Privacy
+
+TubeScore processes the current YouTube page context only to provide its visible movie/TV identification and rating feature. It sends the YouTube video identifier and/or derived media-search terms to the public Wikidata API over HTTPS and stores rating-source preferences locally in Chrome.
+
+See the full [TubeScore Privacy Policy](PRIVACY.md). Chrome Web Store submission copy, privacy disclosures, permission justifications, and release gates are maintained in [docs/CHROME_WEB_STORE.md](docs/CHROME_WEB_STORE.md).
 
 ## Error behavior
 
