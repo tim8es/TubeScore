@@ -110,6 +110,104 @@ describe('zero-config production recognition orchestrator', () => {
     expect(fetchFn.mock.calls.some(([input]) => new URL(String(input)).searchParams.get('action') === 'wbsearchentities')).toBe(false);
   });
 
+  it('keeps an old exact-title entity hidden when title evidence has no year or exact-ID corroboration', async () => {
+    const carrieContext: YouTubeVideoContext = {
+      videoId: 'candidate-gate-carrie',
+      title: 'Carrie | Official Teaser | Prime Video',
+      description: '',
+      channelName: 'Prime Video',
+      hashtags: [],
+      url: 'https://www.youtube.com/watch?v=candidate-gate-carrie'
+    };
+
+    const fetchFn = vi.fn(async (input: RequestInfo | URL) => {
+      const url = new URL(String(input));
+      const action = url.searchParams.get('action');
+      if (action === 'query') return exactIdMiss();
+      if (action === 'wbsearchentities') {
+        return jsonResponse({
+          search: [{ id: 'Q162672', label: 'Carrie', description: '1976 film' }]
+        });
+      }
+      throw new Error(`unexpected_url:${url}`);
+    });
+
+    const result = await createPublicRecognitionOrchestrator({ fetchFn })(carrieContext, { enabledSources: [] });
+
+    expect(result?.decision.state).toBe('hidden');
+    expect(result?.decision.score.candidate.providerId).toBe('Q162672');
+    expect(result?.decision.score.reasons).toEqual(['title-match']);
+  });
+
+  it('keeps an explicit wrong-year entity hidden even when its title is exact', async () => {
+    const russianContext: YouTubeVideoContext = {
+      videoId: 'candidate-gate-old-moana',
+      title: 'Моана — Русский трейлер (Дубляж, 2026)',
+      description: '',
+      channelName: 'Live benchmark',
+      hashtags: [],
+      url: 'https://www.youtube.com/watch?v=candidate-gate-old-moana'
+    };
+
+    const fetchFn = vi.fn(async (input: RequestInfo | URL) => {
+      const url = new URL(String(input));
+      const action = url.searchParams.get('action');
+      if (action === 'query') return exactIdMiss();
+      if (action === 'wbsearchentities') {
+        return jsonResponse({
+          search: [{ id: 'Q18647981', label: 'Моана', description: '2016 фильм' }]
+        });
+      }
+      throw new Error(`unexpected_url:${url}`);
+    });
+
+    const result = await createPublicRecognitionOrchestrator({ fetchFn })(russianContext, { enabledSources: [] });
+
+    expect(result?.decision.state).toBe('hidden');
+    expect(result?.decision.score.candidate.providerId).toBe('Q18647981');
+    expect(result?.decision.score.reasons).toContain('year-mismatch');
+  });
+
+  it('continues past a provisional Russian title-only hit and selects a later year-backed entity', async () => {
+    const russianContext: YouTubeVideoContext = {
+      videoId: 'candidate-gate-current-moana',
+      title: 'Моана — Русский трейлер (Дубляж, 2026)',
+      description: '',
+      channelName: 'Live benchmark',
+      hashtags: [],
+      url: 'https://www.youtube.com/watch?v=candidate-gate-current-moana'
+    };
+    let titleSearchCalls = 0;
+
+    const fetchFn = vi.fn(async (input: RequestInfo | URL) => {
+      const url = new URL(String(input));
+      const action = url.searchParams.get('action');
+      if (action === 'query') return exactIdMiss();
+      if (action === 'wbsearchentities') {
+        titleSearchCalls += 1;
+        if (titleSearchCalls === 1) {
+          return jsonResponse({
+            search: [{ id: 'QOLD', label: 'Моана', description: 'фильм' }]
+          });
+        }
+        if (url.searchParams.get('search') === 'моана') {
+          return jsonResponse({
+            search: [{ id: 'QNEW', label: 'Моана', description: '2026 фильм' }]
+          });
+        }
+        return jsonResponse({ search: [] });
+      }
+      throw new Error(`unexpected_url:${url}`);
+    });
+
+    const result = await createPublicRecognitionOrchestrator({ fetchFn })(russianContext, { enabledSources: [] });
+
+    expect(titleSearchCalls).toBeGreaterThan(1);
+    expect(result?.decision.state).toBe('high');
+    expect(result?.decision.score.candidate.providerId).toBe('QNEW');
+    expect(result?.decision.score.reasons).toContain('year-match');
+  });
+
   it('recognizes and returns multiple Wikidata ratings without runtime config or credentials', async () => {
     const fetchFn = vi.fn(async (input: RequestInfo | URL, _init?: RequestInit) => {
       const url = new URL(String(input));
