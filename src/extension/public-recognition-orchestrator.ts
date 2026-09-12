@@ -190,11 +190,13 @@ export function createPublicRecognitionOrchestrator(
       })
       .sort(compareConsensus);
 
-    if (qualified.length > 0) {
-      if (qualified.length > 1 && consensusTie(qualified[0], qualified[1])) {
+    const winner = qualified[0];
+    if (winner) {
+      const runnerUp = qualified[1];
+      if (runnerUp && consensusTie(winner, runnerUp)) {
         return bestFallback ? hiddenResult(bestFallback) : null;
       }
-      return resultForVisibleScore(qualified[0].bestScore, recognitionOptions);
+      return resultForVisibleScore(winner.bestScore, recognitionOptions);
     }
 
     return bestFallback ? hiddenResult(bestFallback) : null;
