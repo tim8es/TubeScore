@@ -4,7 +4,7 @@ import { normalizeYouTubeTitle } from '../src/core/normalize';
 import { buildLocalizedSearchRequests } from '../src/core/query-builder';
 import type { YouTubeVideoContext } from '../src/core/types';
 import { createPublicRecognitionOrchestrator } from '../src/extension/public-recognition-orchestrator';
-import { WikidataPublicCatalogProvider } from '../src/providers/wikidata/wikidata-public-provider';
+import { WikidataMultilingualCatalogProvider } from '../src/providers/wikidata/wikidata-multilingual-catalog';
 
 const apiBaseUrl = 'https://www.wikidata.org/w/api.php';
 
@@ -75,7 +75,7 @@ describe('multilingual recognition', () => {
       });
     });
 
-    const provider = new WikidataPublicCatalogProvider({ fetchFn, apiBaseUrl });
+    const provider = new WikidataMultilingualCatalogProvider({ fetchFn, apiBaseUrl });
     await expect(provider.search('Паразиты', 'ru')).resolves.toEqual([{
       providerId: 'Q61448040',
       mediaType: 'movie',
