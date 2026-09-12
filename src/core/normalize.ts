@@ -31,12 +31,13 @@ export function normalizeYouTubeTitle(input: string): string {
 
   return value
     .normalize('NFKD')
-    .replace(/\p{M}/gu, '')
+    .replace(/([\p{Script=Latin}])\p{M}+/gu, '$1')
     .replace(/[|•·–—:()[\]{}]/g, ' ')
-    .replace(/[^\p{L}\p{N}\s'-]/gu, ' ')
+    .replace(/[^\p{L}\p{M}\p{N}\s'-]/gu, ' ')
     .replace(/['-]+/g, ' ')
     .replace(/\s+/g, ' ')
     .trim()
+    .normalize('NFC')
     .toLowerCase();
 }
 
