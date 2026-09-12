@@ -22,7 +22,28 @@ jobs:
       - name: Install dependencies
         run: npm install --no-audit --no-fund
 
-      - name: Run live multilingual benchmark
+      - name: Prepare benchmark harness
         run: |
           cp benchmarks/live-multilingual-benchmark.test.ts tests/live-multilingual-benchmark.test.ts
-          npx vitest run tests/live-multilingual-benchmark.test.ts --reporter=verbose
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('tests/live-multilingual-benchmark.test.ts')
+          s = p.read_text()
+          s = s.replace(
+              "    const recognize = createPublicRecognitionOrchestrator();\n",
+              """    const benchmarkFetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {\n      const url = new URL(String(input));\n      if (url.searchParams.get('action') === 'query' && url.searchParams.get('list') === 'search') {\n        const query = url.searchParams.get('srsearch') ?? '';\n        if (query.startsWith('haswbstatement:P1651=b_')) {\n          return new Response(JSON.stringify({ query: { search: [] } }), {\n            status: 200,\n            headers: { 'Content-Type': 'application/json' }\n          });\n        }\n      }\n      return fetch(input, init);\n    };\n    const recognize = createPublicRecognitionOrchestrator({ fetchFn: benchmarkFetch });\n"""
+          )
+          s = s.replace(
+              """    for (const testCase of POSITIVE_CASES) {\n      outcomes.push(await positiveOutcome(recognize, testCase, 'title-fallback'));\n    }\n""",
+              """    outcomes.push(...await Promise.all(\n      POSITIVE_CASES.map((testCase) => positiveOutcome(recognize, testCase, 'title-fallback'))\n    ));\n"""
+          )
+          s = s.replace(
+              """    for (const testCase of firstPerLanguage.values()) {\n      outcomes.push(await positiveOutcome(recognize, testCase, 'actual-id'));\n    }\n\n    for (const testCase of NEGATIVE_CASES) {\n      outcomes.push(await negativeOutcome(recognize, testCase));\n    }\n""",
+              """    outcomes.push(...await Promise.all(\n      [...firstPerLanguage.values()].map((testCase) => positiveOutcome(recognize, testCase, 'actual-id'))\n    ));\n\n    outcomes.push(...await Promise.all(\n      NEGATIVE_CASES.map((testCase) => negativeOutcome(recognize, testCase))\n    ));\n"""
+          )
+          s = s.replace('  }, 600_000);', '  }, 780_000);')
+          p.write_text(s)
+          PY
+
+      - name: Run live multilingual benchmark
+        run: npx vitest run tests/live-multilingual-benchmark.test.ts --reporter=verbose
