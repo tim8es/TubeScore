@@ -187,12 +187,12 @@ describe('zero-config production recognition orchestrator', () => {
         titleSearchCalls += 1;
         if (titleSearchCalls === 1) {
           return jsonResponse({
-            search: [{ id: 'QOLD', label: 'Моана', description: 'фильм' }]
+            search: [{ id: 'Q18647981', label: 'Моана', description: 'фильм' }]
           });
         }
         if (url.searchParams.get('search') === 'моана') {
           return jsonResponse({
-            search: [{ id: 'QNEW', label: 'Моана', description: '2026 фильм' }]
+            search: [{ id: 'Q118996994', label: 'Моана', description: '2026 фильм' }]
           });
         }
         return jsonResponse({ search: [] });
@@ -204,7 +204,7 @@ describe('zero-config production recognition orchestrator', () => {
 
     expect(titleSearchCalls).toBeGreaterThan(1);
     expect(result?.decision.state).toBe('high');
-    expect(result?.decision.score.candidate.providerId).toBe('QNEW');
+    expect(result?.decision.score.candidate.providerId).toBe('Q118996994');
     expect(result?.decision.score.reasons).toContain('year-match');
   });
 
