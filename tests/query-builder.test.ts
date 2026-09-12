@@ -12,9 +12,24 @@ const context: YouTubeVideoContext = {
 };
 
 describe('buildSearchQueries', () => {
-  it('emits a compact canonical title query first and avoids duplicates', () => {
+  it('emits a compact year-qualified query first and avoids duplicates', () => {
     const queries = buildSearchQueries(context);
     expect(queries[0]).toBe('dune part two 2024');
     expect(new Set(queries).size).toBe(queries.length);
+  });
+
+  it('also emits the clean primary title without the year as a Wikidata fallback', () => {
+    const russianContext: YouTubeVideoContext = {
+      videoId: 'yv5-FG08fqg',
+      title: 'Дюна: Часть третья — Русский трейлер #2 (Дубляж, 2026)',
+      description: '',
+      channelName: 'Live benchmark',
+      hashtags: [],
+      url: 'https://www.youtube.com/watch?v=yv5-FG08fqg'
+    };
+
+    const queries = buildSearchQueries(russianContext);
+    expect(queries[0]).toBe('дюна часть третья 2026');
+    expect(queries).toContain('дюна часть третья');
   });
 });

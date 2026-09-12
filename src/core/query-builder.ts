@@ -53,6 +53,7 @@ export function buildSearchQueries(context: YouTubeVideoContext): string[] {
   const descriptionYear = extractFourDigitYear(context.description);
   const candidates = [
     titleYear && primaryTitle ? `${primaryTitle} ${titleYear}` : primaryTitle,
+    titleYear && primaryTitle ? primaryTitle : '',
     !titleYear && descriptionYear && primaryTitle ? `${primaryTitle} ${descriptionYear}` : '',
     normalizeYouTubeTitle(context.title),
     normalizeYouTubeTitle(context.description.split('\n')[0] ?? ''),

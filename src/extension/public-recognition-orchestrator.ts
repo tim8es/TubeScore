@@ -45,6 +45,10 @@ function withExactYouTubeIdEvidence(score: MatchScore): MatchScore {
   };
 }
 
+function hasDisambiguationEvidence(score: MatchScore): boolean {
+  return score.reasons.includes('year-match') || score.reasons.includes('youtube-video-id-match');
+}
+
 export function createPublicRecognitionOrchestrator(
   options: PublicRecognitionOrchestratorOptions = {}
 ): (
@@ -104,7 +108,7 @@ export function createPublicRecognitionOrchestrator(
       if (!score) continue;
 
       const decision = decideMatch(score);
-      if (decision.state === 'hidden') {
+      if (decision.state === 'hidden' || !hasDisambiguationEvidence(score)) {
         if (bestHidden === null || score.confidence > bestHidden.confidence) {
           bestHidden = score;
         }
@@ -115,7 +119,7 @@ export function createPublicRecognitionOrchestrator(
     }
 
     if (bestHidden) {
-      return { decision: decideMatch(bestHidden), ratings: [] };
+      return { decision: { state: 'hidden', score: bestHidden }, ratings: [] };
     }
     return null;
   };
