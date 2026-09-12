@@ -40,7 +40,7 @@ describe('Chrome extension manifest', () => {
 
   it('declares the Chrome Web Store icon set and release metadata', () => {
     expect(manifest.name).toBe('TubeScore');
-    expect(manifest.version).toBe('0.2.3');
+    expect(manifest.version).toBe('0.3.0');
     expect(manifest.description).toBe('Movie and TV ratings directly on YouTube videos and trailers.');
     expect(manifest.icons).toEqual({
       '16': 'assets/icon16.png',

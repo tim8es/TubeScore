@@ -39,15 +39,17 @@ export function scoreCandidate(
   const titleYear = extractFourDigitYear(context.title);
   const descriptionYears = titleYear === undefined ? extractFourDigitYears(context.description) : [];
   const contextTitle = withoutYear(normalizedContext);
-  const candidateTitle = withoutYear(normalizeYouTubeTitle(candidate.title));
-  const originalTitle = candidate.originalTitle
-    ? withoutYear(normalizeYouTubeTitle(candidate.originalTitle))
-    : '';
+  const titleVariants = [
+    candidate.title,
+    candidate.originalTitle ?? '',
+    ...(candidate.aliases ?? [])
+  ]
+    .map((title) => withoutYear(normalizeYouTubeTitle(title)))
+    .filter(Boolean);
 
-  const similarity = Math.max(
-    titleSimilarity(contextTitle, candidateTitle),
-    originalTitle ? titleSimilarity(contextTitle, originalTitle) : 0
-  );
+  const similarity = titleVariants.length === 0
+    ? 0
+    : Math.max(...titleVariants.map((title) => titleSimilarity(contextTitle, title)));
 
   const reasons: string[] = [];
   let confidence = similarity * 0.82;
