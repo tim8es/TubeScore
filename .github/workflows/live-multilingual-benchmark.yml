@@ -23,4 +23,6 @@ jobs:
         run: npm install --no-audit --no-fund
 
       - name: Run live multilingual benchmark
-        run: npx vitest run benchmarks/live-multilingual-benchmark.test.ts --reporter=verbose
+        run: |
+          cp benchmarks/live-multilingual-benchmark.test.ts tests/live-multilingual-benchmark.test.ts
+          npx vitest run tests/live-multilingual-benchmark.test.ts --reporter=verbose
