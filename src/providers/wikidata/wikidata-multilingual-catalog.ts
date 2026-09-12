@@ -24,11 +24,11 @@ function classifyDescription(description: string): CatalogCandidate['mediaType']
   const value = description.normalize('NFKC').toLowerCase();
 
   if (/\b(?:film|movie|filme)\b/u.test(value)) return 'movie';
-  if (/\b(?:фильм|фільм|película)\b/u.test(value)) return 'movie';
+  if (/(?:фильм|фільм|película)/u.test(value)) return 'movie';
   if (/(?:映画|영화|电影|電影)/u.test(value)) return 'movie';
 
   if (/\b(?:television|tv)\s+(?:series|program|programme|miniseries)\b/u.test(value)) return 'tv';
-  if (/\b(?:web series|miniseries|телесериал|сериал|телесеріал|серіал|fernsehserie|serial|dizi)\b/u.test(value)) return 'tv';
+  if (/(?:web series|miniseries|телесериал|сериал|телесеріал|серіал|fernsehserie|serial|dizi)/u.test(value)) return 'tv';
   if (/(?:serie\s+de\s+televisión|série\s+de\s+televisão|série\s+télévisée|serie\s+televisiva)/u.test(value)) return 'tv';
   if (/(?:テレビ(?:ドラマ|シリーズ)|텔레비전\s*(?:드라마|시리즈)|드라마|电视剧|電視劇|电视连续剧|電視連續劇)/u.test(value)) return 'tv';
 
