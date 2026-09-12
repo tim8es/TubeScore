@@ -156,6 +156,12 @@ function mediaSearchResponse(
   };
 }
 
+function qid(prefix: number, language: string, source: ReadonlyArray<{ language: string }>): string {
+  const index = source.findIndex((entry) => entry.language === language);
+  if (index < 0) throw new Error(`unknown_language:${language}`);
+  return `Q${prefix + index}`;
+}
+
 describe('multilingual acceptance matrix', () => {
   it.each(MOVIE_CASES)(
     '$language routes a localized trailer to the intended Wikidata locale',
@@ -180,8 +186,8 @@ describe('multilingual acceptance matrix', () => {
 
   it.each(MOVIE_CASES)(
     '$language reaches a high-confidence recognition result after exact-ID miss',
-    async ({ language, title, canonicalTitle, description }, index) => {
-      const providerId = `Q${900000 + index}`;
+    async ({ language, title, canonicalTitle, description }) => {
+      const providerId = qid(900000, language, MOVIE_CASES);
       const searchedLanguages: string[] = [];
       const fetchFn = vi.fn(async (input: RequestInfo | URL) => {
         const url = new URL(String(input));
@@ -221,13 +227,13 @@ describe('multilingual acceptance matrix', () => {
 
   it.each(TV_DESCRIPTIONS)(
     '$language classifies localized TV descriptions as television content',
-    async ({ language, description }, index) => {
+    async ({ language, description }) => {
       const provider = new WikidataMultilingualCatalogProvider({
         apiBaseUrl,
         fetchFn: vi.fn(async () => jsonResponse({
           search: [{
-            id: `Q${800000 + index}`,
-            label: `Series ${index}`,
+            id: qid(800000, language, TV_DESCRIPTIONS),
+            label: `Series ${language}`,
             description
           }]
         }))
