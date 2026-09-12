@@ -59,6 +59,29 @@ describe('TubeScore source settings UI', () => {
     expect(style).toContain('.tubescore-card__settings-button');
   });
 
+  it('renders the settings gear as a crisp stroke icon instead of a dense filled glyph', () => {
+    const card = renderWithOptions(result);
+    const icon = card.querySelector<SVGSVGElement>('.tubescore-card__settings-button svg');
+    const path = icon?.querySelector('path');
+    const circle = icon?.querySelector('circle');
+
+    expect(icon?.getAttribute('viewBox')).toBe('0 0 24 24');
+    expect(icon?.getAttribute('fill')).toBe('none');
+    expect(path?.getAttribute('fill')).toBe('none');
+    expect(path?.getAttribute('stroke')).toBe('currentColor');
+    expect(path?.getAttribute('stroke-width')).toBe('1.75');
+    expect(path?.getAttribute('stroke-linecap')).toBe('round');
+    expect(path?.getAttribute('stroke-linejoin')).toBe('round');
+    expect(circle?.getAttribute('cx')).toBe('12');
+    expect(circle?.getAttribute('cy')).toBe('12');
+    expect(circle?.getAttribute('r')).toBe('3.25');
+    expect(circle?.getAttribute('stroke')).toBe('currentColor');
+
+    const style = document.querySelector('style[data-tubescore-styles]')?.textContent ?? '';
+    expect(style).toContain('.tubescore-card__settings-button svg { width: 18px; height: 18px;');
+    expect(style).not.toContain('.tubescore-card__settings-button svg { width: 17px; height: 17px; fill: currentColor; }');
+  });
+
   it('opens an icon-only settings drawer, updates visible services, and reports the selection on Done', () => {
     const onEnabledSourcesChange = vi.fn();
     const card = renderWithOptions(result, { onEnabledSourcesChange });

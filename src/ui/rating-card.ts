@@ -173,7 +173,7 @@ html[dark] .tubescore-card, body[dark] .tubescore-card {
   outline: 2px solid var(--tubescore-accent);
   outline-offset: 2px;
 }
-.tubescore-card__settings-button svg { width: 17px; height: 17px; fill: currentColor; }
+.tubescore-card__settings-button svg { width: 18px; height: 18px; display: block; fill: none; }
 .tubescore-card__ratings {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(175px, 1fr));
@@ -408,10 +408,27 @@ function externalLinkIcon(doc: Document): HTMLElement {
 function gearIcon(doc: Document): SVGSVGElement {
   const svg = svgElement(doc, 'svg');
   svg.setAttribute('viewBox', '0 0 24 24');
+  svg.setAttribute('fill', 'none');
   svg.setAttribute('aria-hidden', 'true');
+  svg.setAttribute('focusable', 'false');
+
   const path = svgElement(doc, 'path');
-  path.setAttribute('d', 'M19.43 12.98c.04-.32.07-.65.07-.98s-.03-.66-.08-.98l2.11-1.65-2-3.46-2.49 1a7.2 7.2 0 0 0-1.69-.98L15 3.25h-4l-.36 2.67c-.61.25-1.17.58-1.69.98l-2.49-1-2 3.46 2.11 1.65c-.04.33-.07.66-.07.99s.03.66.07.98l-2.11 1.65 2 3.46 2.49-1c.52.4 1.08.73 1.69.98L11 20.75h4l.36-2.67c.61-.25 1.17-.58 1.69-.98l2.49 1 2-3.46-2.11-1.66ZM13 18.75h-2l-.29-2.16-.64-.24a5.3 5.3 0 0 1-1.42-.82l-.53-.42-2 .8-1-1.73 1.7-1.33-.1-.68a5.5 5.5 0 0 1 0-1.66l.1-.68-1.7-1.33 1-1.73 2 .8.53-.42a5.3 5.3 0 0 1 1.42-.82l.64-.24L11 5.25h2l.29 2.16.64.24c.51.2.99.47 1.42.82l.53.42 2-.8 1 1.73-1.7 1.33.1.68c.08.55.08 1.11 0 1.66l-.1.68 1.7 1.33-1 1.73-2-.8-.53.42c-.43.35-.91.62-1.42.82l-.64.24L13 18.75ZM12 8.5A3.5 3.5 0 1 0 12 15a3.5 3.5 0 0 0 0-7Zm0 5A1.5 1.5 0 1 1 12 10a1.5 1.5 0 0 1 0 3.5Z');
-  svg.append(path);
+  path.setAttribute('d', 'M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 0 0 2.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 0 0 1.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 0 0-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 0 0-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 0 0-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 0 0-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 0 0 1.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z');
+  path.setAttribute('fill', 'none');
+  path.setAttribute('stroke', 'currentColor');
+  path.setAttribute('stroke-width', '1.75');
+  path.setAttribute('stroke-linecap', 'round');
+  path.setAttribute('stroke-linejoin', 'round');
+
+  const circle = svgElement(doc, 'circle');
+  circle.setAttribute('cx', '12');
+  circle.setAttribute('cy', '12');
+  circle.setAttribute('r', '3.25');
+  circle.setAttribute('fill', 'none');
+  circle.setAttribute('stroke', 'currentColor');
+  circle.setAttribute('stroke-width', '1.75');
+
+  svg.append(path, circle);
   return svg;
 }
 
