@@ -15,7 +15,7 @@ Reason: it improved precision by suppressing wrong entities but damaged recall t
 
 ## Preregistered candidate: entity/cross-query consensus
 
-This rule is fixed before production code changes and before after-metrics are collected.
+This rule was fixed before production code changes and before after-metrics were collected.
 
 1. Exact Wikidata `P1651` YouTube-ID matching remains authoritative and is outside title-fallback consensus.
 2. Title fallback evaluates every request from the existing `buildLocalizedSearchRequests` plan; the first `likely`/`high` request must not terminate selection.
@@ -38,13 +38,41 @@ Metrics:
 - `precision = correct visible positives / (correct visible positives + wrong-entity visible positives + visible adversarial negatives)`
 - adversarial metric = number of negative/collision cases that remain hidden or return no result.
 
-PASS requires, on the same affected benchmark against `main@3359c2e502370eb6a414b564ebd7b7cc3d2ad12c`:
+PASS required, on the same affected benchmark against `main@3359c2e502370eb6a414b564ebd7b7cc3d2ad12c`:
 
 - `precision_after > precision_main`, and
 - `recall_after > recall_main`, and
 - adversarial hidden count is not lower than main.
 
 If both precision and recall do not improve strictly, this candidate is **DROP** and no PR is opened.
+
+## Result: DROP
+
+Fresh affected benchmark, identical 20 positive + 9 adversarial cases:
+
+| Metric | main baseline | entity consensus | Delta |
+| --- | ---: | ---: | ---: |
+| Correct visible positives | 5/20 | 4/20 | -1 |
+| Wrong-entity visible positives | 6 | 4 | -2 |
+| Adversarial hidden | 8/9 | 8/9 | 0 |
+| Precision | 0.4167 | 0.4444 | +0.0277 |
+| Recall | 0.25 | 0.20 | -0.05 |
+
+The candidate improves precision but reduces recall, so it fails the preregistered simultaneous-improvement gate and is **DROP**. No PR is opened and this rule must not be promoted.
+
+Benchmark evidence:
+
+- baseline run: `34723824105`, job `103634333504`
+- candidate run: `34724115513`, job `103635123167`
+
+Test evidence:
+
+- RED before implementation: CI `34723886650`; six prior wrong-title regressions failed while five correct title-only regressions passed.
+- targeted candidate regressions after implementation: `11/11` passed in run `34724115513`.
+- full suite on candidate: typecheck passed, but `171/175` tests passed and `4/175` failed in CI `34724026106`.
+- two full-suite failures are substantive recall regressions (`Onslaught` becomes hidden; a later correct-year Onslaught candidate becomes hidden); two are changed-query-count/order expectations caused by evaluating all consensus requests.
+
+No browser smoke was run. Chrome Web Store was not touched.
 
 ## Scope constraints
 
