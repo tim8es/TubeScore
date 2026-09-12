@@ -1,0 +1,22 @@
+name: Entity consensus affected benchmark
+
+on:
+  push:
+    branches:
+      - benchmark/entity-consensus-baseline-v031
+      - benchmark/entity-consensus-after-v031
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install --no-audit --no-fund
+      - name: Prepare benchmark harness
+        run: cp benchmarks/entity-consensus-affected-benchmark.test.ts tests/entity-consensus-affected-benchmark.test.ts
+      - name: Run affected benchmark
+        run: npx vitest run tests/entity-consensus-affected-benchmark.test.ts --reporter=verbose
