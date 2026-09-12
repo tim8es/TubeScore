@@ -15,6 +15,11 @@ if ('options_page' in manifest) throw new Error('standard_build_contains_options
 if (await exists('dist/dev-bootstrap.js')) throw new Error('standard_build_contains_dev_bootstrap_js');
 if (await exists('dist/dev-bootstrap.html')) throw new Error('standard_build_contains_dev_bootstrap_html');
 
+for (const size of [16, 32, 48, 128]) {
+  const path = `dist/assets/icon${size}.png`;
+  if (!(await exists(path))) throw new Error(`standard_build_missing_icon:${path}`);
+}
+
 const worker = await readFile('dist/service-worker.js', 'utf8');
 for (const forbidden of [
   'tubescoreRuntimeConfig',

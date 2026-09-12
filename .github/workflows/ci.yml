@@ -27,7 +27,14 @@ jobs:
         run: |
           unzip -t TubeScore-MVP.zip
           entries="$(unzip -Z1 TubeScore-MVP.zip)"
-          for file in manifest.json content-script.js service-worker.js; do
+          for file in \
+            manifest.json \
+            content-script.js \
+            service-worker.js \
+            assets/icon16.png \
+            assets/icon32.png \
+            assets/icon48.png \
+            assets/icon128.png; do
             printf '%s\n' "$entries" | grep -Fx "$file"
           done
       - name: Upload verified TubeScore MVP
