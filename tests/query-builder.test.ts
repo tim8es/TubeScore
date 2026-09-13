@@ -32,4 +32,33 @@ describe('buildSearchQueries', () => {
     expect(queries[0]).toBe('дюна часть третья 2026');
     expect(queries).toContain('дюна часть третья');
   });
+
+  it('uses the YouTube publish year as a weak query hint when release year is absent', () => {
+    const publishedContext = {
+      videoId: 'SJVmeJaS44s',
+      title: "Harry Potter and the Philosopher's Stone | Official Teaser Trailer | HBO Max",
+      description: 'Welcome to a new year at Hogwarts. The HBO Original Series premieres this Christmas.',
+      channelName: 'Harry Potter',
+      hashtags: ['HarryPotterHBO'],
+      url: 'https://www.youtube.com/watch?v=SJVmeJaS44s',
+      publishedYear: 2026
+    } as YouTubeVideoContext & { publishedYear: number };
+
+    const queries = buildSearchQueries(publishedContext);
+    expect(queries[0]).toBe('harry potter and the philosopher s stone 2026');
+    expect(queries[1]).toBe('harry potter and the philosopher s stone 2027');
+    expect(queries).toContain('harry potter and the philosopher s stone');
+  });
+
+  it('does not add upload-year hints when the title already states a release year', () => {
+    const publishedContext = {
+      ...context,
+      publishedYear: 2026
+    } as YouTubeVideoContext & { publishedYear: number };
+
+    const queries = buildSearchQueries(publishedContext);
+    expect(queries[0]).toBe('dune part two 2024');
+    expect(queries).not.toContain('dune part two 2026');
+    expect(queries).not.toContain('dune part two 2027');
+  });
 });
