@@ -7,6 +7,7 @@ export interface YouTubeVideoContext {
   channelName: string;
   hashtags: string[];
   url: string;
+  publishedYear?: number;
 }
 
 export interface CatalogCandidate {
