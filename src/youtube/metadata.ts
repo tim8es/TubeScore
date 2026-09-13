@@ -8,6 +8,15 @@ function textContent(root: ParentNode, selectors: string[]): string {
   return '';
 }
 
+function extractPublishedYear(document: Document): number | undefined {
+  for (const selector of ['meta[itemprop="datePublished"]', 'meta[itemprop="uploadDate"]']) {
+    const value = document.querySelector<HTMLMetaElement>(selector)?.content?.trim();
+    const match = value?.match(/\b(19\d{2}|20\d{2}|21\d{2})\b/);
+    if (match) return Number(match[1]);
+  }
+  return undefined;
+}
+
 function extractHashtags(document: Document, description: string): string[] {
   const values: string[] = [];
   const seen = new Set<string>();
@@ -59,12 +68,15 @@ export function extractYouTubeVideoContext(
     '#channel-name a'
   ]);
 
+  const publishedYear = extractPublishedYear(document);
+
   return {
     videoId,
     title,
     description,
     channelName,
     hashtags: extractHashtags(document, description),
-    url: location.href
+    url: location.href,
+    ...(publishedYear === undefined ? {} : { publishedYear })
   };
 }
