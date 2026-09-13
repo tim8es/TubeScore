@@ -1,0 +1,69 @@
+name: Upload-year query hint evaluator
+
+on:
+  push:
+    branches:
+      - benchmark/upload-year-query-hint-v031
+
+permissions:
+  contents: read
+
+jobs:
+  evaluate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install --no-audit --no-fund
+      - name: Prepare identical production-context evaluator with published years
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/tim8es/TubeScore/research/production-context-eval-v031/benchmarks/production-context-affected.test.ts -o tests/upload-year-query-hint-eval.test.ts
+          node <<'NODE'
+          const fs = require('fs');
+          const path = 'tests/upload-year-query-hint-eval.test.ts';
+          let source = fs.readFileSync(path, 'utf8');
+          source = source.replace('  videoId: string;\n  title: string;', '  videoId: string;\n  publishedYear: number;\n  title: string;');
+          const years = {
+            'en-artificial': 2026,
+            'en-street-fighter': 2026,
+            'en-harry-potter-hbo': 2026,
+            'en-resident-evil': 2026,
+            'es-resident-evil': 2026,
+            'es-odyssey': 2026,
+            'es-carrie': 2026,
+            'es-avengers-doomsday': 2026,
+            'pt-odyssey': 2025,
+            'pt-harry-potter-hbo': 2026,
+            'pt-scary-movie': 2026,
+            'pt-avengers-doomsday': 2026,
+            'ru-dune-3': 2026,
+            'ru-mayday': 2026,
+            'ru-avengers-doomsday': 2026,
+            'ru-moana': 2026,
+            'it-odyssey': 2025,
+            'it-dune-3': 2026,
+            'it-avengers-doomsday': 2026,
+            'it-kettice': 2026
+          };
+          for (const [id, year] of Object.entries(years)) {
+            const marker = `{ id: '${id}', language:`;
+            const start = source.indexOf(marker);
+            if (start < 0) throw new Error(`missing fixture:${id}`);
+            const videoMarker = "videoId: '";
+            const videoStart = source.indexOf(videoMarker, start);
+            if (videoStart < 0) throw new Error(`missing videoId:${id}`);
+            const comma = source.indexOf(', title:', videoStart);
+            if (comma < 0) throw new Error(`missing title marker:${id}`);
+            source = `${source.slice(0, comma)}, publishedYear: ${year}${source.slice(comma)}`;
+          }
+          source = source.replace(
+            '    videoId: fakeVideoId(testCase.id),\n    title: testCase.title,',
+            '    videoId: fakeVideoId(testCase.id),\n    publishedYear: testCase.publishedYear,\n    title: testCase.title,'
+          );
+          fs.writeFileSync(path, source);
+          NODE
+      - name: Run affected evaluator
+        run: npx vitest run tests/upload-year-query-hint-eval.test.ts --reporter=verbose
